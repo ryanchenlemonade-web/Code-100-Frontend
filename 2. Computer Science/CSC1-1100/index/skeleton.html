@@ -1,0 +1,65 @@
+<!-- skeleton.html -->
+<!-- Practice / Examination(原 Testing) / Revision 的共用页面骨架。
+     所有 Test 分类（Test 1 / Test 2 / Test 3 / Final Test）、不管哪个年份，
+     都靠这一份骨架统一生成，不用再为每个 Test 单独建一份 html 文件（比如以前的 cs1_test1.html）。
+     由 testing-engine.js 里的 loadSkeletonHTML() 通过 fetch 读取，读取一次后会缓存，
+     后续切换 Test 分类不会重复发请求。 -->
+
+<!-- Practice -->
+<div class="test-section active" id="practice-content">
+    <h2>Practice</h2>
+
+    <!-- 题型筛选：Practice 模式跨所有年份混合展示，靠这个下拉框按题型筛选 -->
+    <div class="practice-filter">
+        <label for="practice-type-select">Question Type: </label>
+        <select id="practice-type-select">
+            <option value="">All</option>
+            <option value="one-liners">One-Liners</option>
+            <option value="debugging">Debugging</option>
+            <option value="get-output">Get-Output</option>
+            <option value="half-program">Half-Program</option>
+            <option value="full-program">Full-Program</option>
+        </select>
+    </div>
+
+    <div id="practice-questions">
+        <!-- 题目由 JS 动态插入在这里 -->
+    </div>
+</div>
+
+
+
+<!-- Examination（原 Testing，改名避免跟 Test 1/2/3 混淆） -->
+<div class="test-section" id="testing-content">
+    <!-- 版本切换下拉框：只在 Examination 标签页显示，只有同一分类下有多个年份版本时才会真正显示出来 -->
+    <div id="version-selector-wrap" class="version-selector-wrap">
+        <label for="version-select">Version: </label>
+        <select id="version-select"></select>
+    </div>
+
+    <div class="testing-header" id="testing-header">
+        <h2>Examination</h2>
+
+        <div class="timer-group">
+            <span id="testing-timer" class="testing-timer">Timer: 00:00</span>
+            <button id="timer-toggle-btn" disabled>Hide Timer</button>
+        </div>
+
+        <button id="testing-start-btn">Start Examination</button>
+        <button id="testing-retake-btn" style="display: none;">Retake Test</button>
+    </div>
+
+    <div id="testing-questions" style="display: none;">
+        <!-- 题目由 JS 动态插入在这里 -->
+    </div>
+
+    <button id="testing-submit-btn" disabled style="display: none;">All Done!!</button>
+
+    <button id="testing-back-to-top-btn" style="display: none;">↑ Back to Top</button>
+</div>
+
+
+
+<!-- Revision -->
+<div class="test-section" id="revision-content">
+</div>

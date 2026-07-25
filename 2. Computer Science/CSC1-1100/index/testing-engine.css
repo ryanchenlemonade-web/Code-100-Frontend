@@ -1,0 +1,367 @@
+/* testing-engine.css */
+
+/* 版本切换下拉框：默认隐藏，只有当同一分类下有多个年份版本时，
+   cs1_index.js 才会加上 .show 让它显示出来 */
+.version-selector-wrap {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    font-size: 1.05rem;
+    color: var(--icon-color);
+}
+
+.version-selector-wrap.show {
+    display: flex;
+}
+
+/* 考试进行中，不管原本是否该显示，一律强制隐藏，避免中途切换年份版本 */
+.version-selector-wrap.hide-during-exam {
+    display: none !important;
+}
+
+.version-selector-wrap label {
+    font-weight: 600;
+}
+
+#version-select {
+    padding: 9px 16px;
+    border: 1px solid var(--divider-color);
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: var(--icon-color);
+    font-size: 1.05rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+}
+
+#version-select:hover {
+    border-color: var(--blue);
+}
+
+
+/* Practice 模式的题型筛选下拉框，样式跟 version-selector 保持一致 */
+.practice-filter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    font-size: 0.95rem;
+    color: var(--icon-color);
+}
+
+.practice-filter label {
+    font-weight: 600;
+}
+
+#practice-type-select {
+    padding: 6px 12px;
+    border: 1px solid var(--divider-color);
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: var(--icon-color);
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+}
+
+#practice-type-select:hover {
+    border-color: var(--blue);
+}
+
+
+/* 题目容器：跟上方的筛选框/header拉开距离，Practice和Testing/Examination共用 */
+#practice-questions,
+#testing-questions {
+    margin-top: 36px;
+}
+
+.question-block {
+    margin-bottom: 44px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--divider-color);
+}
+
+.question-label-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.question-label {
+    font-weight: bold;
+    margin: 0;
+}
+
+/* Practice 模式跨年份混合展示时，标注每道题来自哪一年的考卷 */
+.question-year-tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background-color: hsl(207, 60%, 92%);
+    color: hsl(207, 60%, 35%);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* Practice 模式选 "All" 题型时，标注每道题具体是什么类型（浅灰色，跟年份标签的蓝色区分开） */
+.question-type-tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background-color: hsl(0, 0%, 90%);
+    color: hsl(0, 0%, 35%);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.question-code,
+.answer-code {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: Consolas, Monaco, 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 8px 0 16px 0;
+}
+
+.question-code {
+    background-color: var(--code-bg);
+    color: var(--code-text);
+}
+
+.answer-code {
+    background-color: var(--answer-bg);
+    color: var(--answer-text);
+    margin: 8px 0 0 0;
+    display: none;
+}
+
+.answer-code.show {
+    display: block;
+}
+
+.show-answer-btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 8px;
+    background-color: var(--blue);
+    color: white;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.show-answer-btn:hover {
+    background-color: hsl(212, 100%, 34%);
+}
+
+
+.testing-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 40px;
+    padding: 16px 24px;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.testing-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: var(--icon-color);
+    transition: opacity 0.3s ease;
+}
+
+.timer-group {
+    display: flex;
+    align-items: center;
+    gap: 17px;
+}
+
+.testing-header.exam-in-progress {
+    justify-content: center;
+}
+
+.testing-header.exam-in-progress h2,
+.testing-header.exam-in-progress #testing-start-btn {
+    display: none;
+}
+
+/* 交卷后进入批改模式：h2 显示 "Correction"，改成绿色区分一下 */
+.testing-header.exam-finished h2 {
+    color: black;
+}
+
+.testing-timer {
+    font-family: Consolas, Monaco, 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--weak-color);
+    transition: font-size 0.35s ease, color 0.35s ease, opacity 0.3s ease;
+}
+
+.testing-timer.timing-active {
+    font-size: 1.6rem;
+    color: var(--blue);
+}
+
+.testing-timer.timer-hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.testing-timer.timer-warning-10 {
+    color: hsl(35, 90%, 45%);
+}
+
+.testing-timer.timer-warning-5 {
+    color: hsl(0, 75%, 45%);
+    animation: timerPulse 1s ease-in-out infinite;
+}
+
+.testing-timer.timer-warning-1 {
+    color: hsl(0, 80%, 40%);
+    animation: timerPulse 0.6s ease-in-out infinite;
+}
+
+.testing-timer.timer-overtime {
+    color: hsl(0, 75%, 45%);
+}
+
+.testing-timer.timer-finished {
+    color: hsl(0, 0%, 25%);
+}
+
+@keyframes timerPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+#timer-toggle-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 10px;
+    background-color: hsl(0, 0%, 95%);
+    color: var(--icon-color);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s ease, opacity 0.3s ease;
+}
+
+#timer-toggle-btn:hover:not(:disabled) {
+    background-color: hsl(0, 0%, 87%);
+}
+
+#timer-toggle-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+
+.exam-toast {
+    position: fixed;
+    top: 120px;
+    right: 24px;
+    background: #ffffff;
+    border-left: 6px solid hsl(35, 90%, 45%);
+    border-radius: 12px;
+    padding: 18px 26px;
+    max-width: 340px;
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--icon-color);
+    line-height: 1.6;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    z-index: 1000;
+    animation: examToastSlideIn 0.3s ease;
+}
+
+.exam-toast.exam-toast-hide {
+    animation: examToastSlideOut 0.3s ease forwards;
+}
+
+@keyframes examToastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(24px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes examToastSlideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(24px);
+    }
+}
+
+#testing-start-btn,
+#testing-submit-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    background-color: var(--blue);
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.2s ease,
+                padding 0.3s ease, font-size 0.3s ease, opacity 0.3s ease;
+}
+
+#testing-start-btn:hover:not(:disabled),
+#testing-submit-btn:hover:not(:disabled) {
+    background-color: hsl(212, 100%, 34%);
+}
+
+#testing-submit-btn {
+    margin-top: 8px;
+}
+
+#testing-start-btn:disabled,
+#testing-submit-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: scale(0.96);
+}
+
+
+#testing-back-to-top-btn,
+#testing-retake-btn {
+    padding: 10px 22px;
+    border: 1px solid var(--divider-color);
+    border-radius: 10px;
+    background: #ffffff;
+    color: var(--icon-color);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+#testing-back-to-top-btn:hover,
+#testing-retake-btn:hover {
+    background-color: hsl(0, 0%, 96%);
+}
+
+#testing-back-to-top-btn {
+    display: block;
+    margin: 32px auto 0;
+}

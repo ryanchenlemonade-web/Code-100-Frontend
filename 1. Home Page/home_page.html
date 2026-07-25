@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code 100</title>
+    <link rel="stylesheet" href="home_style.css">
+    <link rel="stylesheet" href="auth.css">
+    <script src="https://kit.fontawesome.com/925aa7b7b9.js" crossorigin="anonymous"></script>
+    <link rel="icon" type="image/png" href="../0. images/Code 100.png">
+</head>
+<body>
+
+    <div id="header-wrapper">
+        <a id="header" href="home_page.html">
+            <h1 id="web-header">Code 100</h1>
+        </a>
+        <p id="slogan">Here you can find all the Past Exams</p>
+    </div>
+    
+    
+    <div class="nav-bar">
+        
+        <a href="home_page.html" class="bar-items">
+            <img id="logo" src="../0. images/Code 100.png">
+        </a>
+
+        <div class="dropdown">
+            <a href="" class="bar-items" id="cs">Computer Science</a>
+            <div class="dropdown-menu">
+                <a href="../2. Computer Science/CSC1-1100/index/cs1_index.html" class="dropdown-cs" target="_blank">CS1</a>
+                <a href="" class="dropdown-cs" id="ds">Data Structures</a>
+            </div>
+        </div>
+
+
+        <div class="dropdown">
+            <a href="" class="bar-items">Math</a>
+            <div class="dropdown-menu">
+                <a href="" class="dropdown-math" id="c3">Calc 3</a>
+                <a href="" class="dropdown-math" id="la">Linear Algebra</a>
+            </div>
+        </div>
+
+
+        <a href="" class="bar-items">LeaderBoard</a>
+        <a href="#" class="bar-items" id="profile-nav-link">Profile</a>
+    </div>
+    
+    <!-- 登录邀请横幅：只在未登录时显示，登录后由 auth.js 自动隐藏 -->
+    <div class="cta-banner hidden" id="cta-banner">
+        <div class="cta-text">
+            <h3>New here?</h3>
+            <p>Create a free account to track your study time and unlock your Profile page.</p>
+        </div>
+        <button id="cta-login-btn" class="cta-btn">Log In / Sign Up</button>
+    </div>
+
+    <div class="intro">
+        <div class="intro-text">
+            <h3>Welcome to Code100!</h3>
+            <p>
+                Hi, I'm Ryan Chen, a sophomore at RPI dual majoring 
+                in Computer Science and Math. I built this website because I know how frustrating it can be to prep for an exam — 
+                digging through past tests, or making the trek to the Union just to snap a few photos of practice problems.
+            </p>
+            <p>
+                Code100 is my attempt to make that easier. A simple place to find past problems, practice at your own pace, 
+                and hopefully learn to actually enjoy the process a little more. What's most important? <b>It's completely free!!!</b> 
+            </p>
+            <p>
+                Right now Code100 only covers <b>CS1 (CSCI-1100)</b> — I know that's not much yet, but more subjects are on their way! So stay tuned!
+            </p>
+            <p>
+                If you're interested, join our Discord Server linked at the bottom of the page. That's where I'll be hanging out, and 
+                I'd love to hear your thoughts — what works, what doesn't, and what you'd like to see next. And if you find it useful, 
+                <b>please share it with a friend!</b>
+            </p>
+            <p id="thx">
+                Thanks for all your support!!
+            </p>
+            <p id="ps">
+            P.S. New updates will be posted regularly — stay tuned! <br> Including <b>Computer Science - Data Structures</b>, <b>Math</b>, 
+            <b>Leaderboard</b> and <b>Profile</b> pages.
+            </p>
+        </div>
+
+        <div class="meet-the-developer">
+            <br><br><hr>
+            <h2>Meet the Developer</h2>
+            <br>
+            <div class="developers">
+                <img id="ryan" src="../0. images/ryan.JPG">
+                <div class="developers-intro">
+                    <p>Ryan Chen</p>
+                    <p>Founder & Developer of Code 100</p>
+                    <div class="dev-links">
+                        <a href="mailto:chenr21@rpi.edu"><i class="fa-solid fa-envelope"></i></a>
+                        <a href="https://discord.gg/你的邀请码" target="_blank"><i class="fa-brands fa-discord"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="updates">
+            <br><br><br><hr>
+            <h2>New Updates</h2>
+            <p>Coming Soon!!</p>
+        </div>
+    </div>
+
+
+    <!-- footer -->
+    <div id="footer-container"></div>
+
+    <!-- 登录 / 注册 / 忘记密码 弹窗 -->
+    <div id="auth-modal-overlay">
+        <div id="auth-modal">
+            <button id="auth-modal-close">&times;</button>
+
+            <!-- 登录 -->
+            <div class="auth-view active" id="auth-view-login">
+                <h2>Log In</h2>
+                <form id="login-form" novalidate>
+                    <div class="auth-form-row">
+                        <label for="login-identifier">Username or Email</label>
+                        <input type="text" id="login-identifier" required>
+                    </div>
+                    <div class="auth-form-row">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" required>
+                    </div>
+                    <button type="submit" class="auth-submit-btn">Log In</button>
+                </form>
+                <div class="auth-switch-row">
+                    <a href="#" data-switch-view="forgot">Forgot password?</a><br>
+                    Don't have an account? <a href="#" data-switch-view="register">Sign up</a>
+                </div>
+            </div>
+
+            <!-- 注册 -->
+            <div class="auth-view" id="auth-view-register">
+                <h2>Sign Up</h2>
+                <form id="register-form" novalidate>
+                    <div class="auth-form-row">
+                        <label for="register-username">Username</label>
+                        <input type="text" id="register-username" placeholder="e.g. RCS ID" required>
+                    </div>
+                    <div class="auth-form-row">
+                        <label for="register-email">Email</label>
+                        <input type="email" id="register-email" required>
+                    </div>
+                    <div class="auth-form-row">
+                        <label for="register-password">Password (6+ characters)</label>
+                        <input type="password" id="register-password" minlength="6" required>
+                    </div>
+                    <div class="auth-form-row">
+                        <label for="register-confirm-password">Confirm Password</label>
+                        <input type="password" id="register-confirm-password" minlength="6" required>
+                    </div>
+                    <button type="submit" class="auth-submit-btn">Sign Up</button>
+                </form>
+                <div class="auth-switch-row">
+                    Already have an account? <a href="#" data-switch-view="login">Log in</a>
+                </div>
+            </div>
+
+            <!-- 忘记密码 -->
+            <div class="auth-view" id="auth-view-forgot">
+                <h2>Reset Password</h2>
+                <form id="forgot-password-form" novalidate>
+                    <div class="auth-form-row">
+                        <label for="forgot-email">Email</label>
+                        <input type="email" id="forgot-email" required>
+                    </div>
+                    <button type="submit" class="auth-submit-btn">Send Reset Link</button>
+                </form>
+                <div class="auth-switch-row">
+                    <a href="#" data-switch-view="login">Back to login</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="home_page.js"></script>
+    <script src="auth.js"></script>
+</body>
+</html>

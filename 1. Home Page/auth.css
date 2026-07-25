@@ -1,0 +1,244 @@
+/* auth.css */
+
+/* 兜底变量：这个文件现在被主页（home_style.css）和其他页面共用，
+   为了不依赖每个页面自己的样式表里有没有定义这些变量，这里自己声明一份默认值 */
+:root {
+    --blue: #0066cc;
+    --icon-color: hsl(0, 0%, 15%);
+    --weak-color: hsl(0, 0%, 45%);
+    --divider-color: hsl(0, 0%, 87%);
+}
+
+/* 登录邀请横幅：只在未登录时显示，提醒新用户可以注册账号 */
+.cta-banner {
+    max-width: 900px;
+    margin: 24px auto;
+    padding: 24px 32px;
+    background: linear-gradient(135deg, hsl(207, 70%, 96%), hsl(260, 55%, 96%));
+    border: 1px solid hsl(207, 50%, 88%);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.cta-text h3 {
+    margin: 0 0 4px;
+    font-size: 1.15rem;
+    color: var(--icon-color);
+}
+
+.cta-text p {
+    margin: 0;
+    color: var(--weak-color);
+    font-size: 0.92rem;
+}
+
+.cta-btn {
+    padding: 11px 26px;
+    border: none;
+    border-radius: 10px;
+    background-color: var(--blue);
+    color: white;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.2s ease;
+}
+
+.cta-btn:hover {
+    background-color: hsl(212, 100%, 34%);
+}
+
+.cta-banner.hidden {
+    display: none;
+}
+.welcome-toast {
+    position: fixed;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ffffff;
+    border-left: 6px solid var(--blue);
+    border-radius: 12px;
+    padding: 14px 28px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--icon-color);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+    z-index: 2500;
+    animation: welcomeToastIn 0.35s ease;
+}
+
+.welcome-toast.welcome-toast-hide {
+    animation: welcomeToastOut 0.35s ease forwards;
+}
+
+@keyframes welcomeToastIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(-16px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes welcomeToastOut {
+    from { opacity: 1; transform: translateX(-50%) translateY(0); }
+    to { opacity: 0; transform: translateX(-50%) translateY(-16px); }
+}
+
+/* 弹窗遮罩：用 opacity 做淡入淡出，而不是 display 直接切换，这样才能有过渡动画 */
+#auth-modal-overlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+#auth-modal-overlay.show {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+#auth-modal {
+    position: relative;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 36px 36px 28px;
+    width: 380px;
+    max-width: 90vw;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+    transform: scale(0.94) translateY(12px);
+    transition: transform 0.25s ease;
+}
+
+#auth-modal-overlay.show #auth-modal {
+    transform: scale(1) translateY(0);
+}
+
+#auth-modal h2 {
+    margin-top: 0;
+    margin-bottom: 22px;
+    text-align: center;
+    color: var(--icon-color);
+}
+
+#auth-modal-close {
+    position: absolute;
+    top: 14px;
+    right: 18px;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--weak-color);
+}
+
+.auth-view {
+    display: none;
+}
+
+.auth-view.active {
+    display: block;
+}
+
+.auth-form-row {
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.auth-form-row label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--icon-color);
+}
+
+.auth-form-row input {
+    padding: 10px 12px;
+    border: 1px solid var(--divider-color);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: inherit;
+}
+
+.auth-form-row input:focus {
+    outline: none;
+    border-color: var(--blue);
+}
+
+.auth-form-row input.input-error {
+    border-color: hsl(0, 70%, 48%);
+    background-color: hsl(0, 70%, 98%);
+}
+
+.auth-hint {
+    font-size: 0.78rem;
+    color: var(--weak-color);
+    font-weight: 400;
+}
+
+.auth-submit-btn {
+    width: 100%;
+    padding: 11px;
+    border: none;
+    border-radius: 10px;
+    background-color: var(--blue);
+    color: white;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.auth-submit-btn:hover {
+    background-color: hsl(212, 100%, 34%);
+}
+
+.auth-switch-row {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--weak-color);
+    line-height: 1.8;
+}
+
+.auth-switch-row a {
+    color: var(--blue);
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.auth-switch-row a:hover {
+    text-decoration: underline;
+}
+
+.auth-message {
+    text-align: center;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+}
+
+.auth-message.success {
+    background-color: hsl(140, 40%, 94%);
+    color: hsl(140, 45%, 28%);
+}
+
+.auth-message.error {
+    background-color: hsl(0, 70%, 96%);
+    color: hsl(0, 70%, 40%);
+}

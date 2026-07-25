@@ -1,0 +1,71 @@
+<!-- cs1_index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="cs1_index_style.css">
+    <link rel="stylesheet" href="testing-engine.css">
+    <link rel="icon" type="image/png" href="../../../0. images/Code 100.png">
+</head>
+<body>
+    <div id="header-wrapper">
+        <div class="title-row">
+            <img id="logo" src="../../../0. images/Code 100.png">
+            <a id="web-header" href="home_page.html">
+                <h1>CSCI-1100</h1>
+            </a>
+        </div>
+        <p id="slogan">Here you can find all the Past Exams</p>
+    </div>
+
+
+
+
+    <div class="nav-bar">
+
+        <a href="#" class="bar-items active" id="test1">Test 1</a>
+        <a href="#" class="bar-items" id="test2">Test 2</a>
+        <a href="#" class="bar-items" id="test3">Test 3</a>
+        <a href="#" class="bar-items" id="final">Final Test</a>
+    </div>
+
+    
+
+    <!-- 主要内容 -->
+    <div class="main-layout">
+        <div class="sidebar">
+
+            <a href="#" class="sidebar-item active" id="practice">
+                <span class="icon">📝</span>
+                <span>Practice</span>
+            </a>
+            <a href="#" class="sidebar-item" id="testing">
+                <span class="icon">⏱️</span>
+                <span>Examination</span>
+            </a>
+            <a href="#" class="sidebar-item" id="revision">
+                <span class="icon">🔍</span>
+                <span>Revision</span>
+            </a>
+        </div>
+
+
+        <div class="content" id="content-container">
+            <!-- 页面刚打开时，这里手动放 Test 1 的内容，避免第一次加载时空白 -->
+        </div>
+    </div>
+    
+
+
+
+    <!-- footer -->
+    <div id="footer-container"></div>
+
+    <script src="testing-engine.js"></script>
+    <script src="cs1_index.js"></script>
+    <script src="../../../0. Shared/heartbeat.js"></script>
+</body>
+</html>

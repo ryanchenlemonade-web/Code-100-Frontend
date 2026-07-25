@@ -1,0 +1,188 @@
+/* profile.css */
+
+:root {
+    --blue: #0066cc;
+    --icon-color: hsl(0, 0%, 15%);
+    --weak-color: hsl(0, 0%, 45%);
+    --divider-color: hsl(0, 0%, 87%);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, hsl(207, 60%, 96%), hsl(260, 50%, 96%));
+    min-height: 100vh;
+    margin: 0;
+    padding-bottom: 80px;
+    color: var(--icon-color);
+}
+
+#header-wrapper {
+    display: flex;
+    justify-content: center;
+    padding: 28px 0 12px;
+}
+
+#header {
+    text-decoration: none;
+}
+
+#web-header {
+    color: black;
+    font-size: 2rem;
+    margin: 0;
+}
+
+.profile-main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.profile-card {
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 32px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+    animation: cardFadeIn 0.5s ease forwards;
+}
+
+@keyframes cardFadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 用户信息卡片 */
+.profile-header-card {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.avatar-circle {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, hsl(207, 70%, 55%), hsl(260, 60%, 60%));
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.profile-header-text {
+    flex: 1;
+}
+
+.profile-header-text h1 {
+    margin: 0 0 4px;
+    font-size: 1.5rem;
+}
+
+.profile-header-text p {
+    margin: 0;
+    color: var(--weak-color);
+    font-size: 0.9rem;
+}
+
+.logout-btn {
+    padding: 9px 20px;
+    border: 1px solid var(--divider-color);
+    border-radius: 10px;
+    background: #ffffff;
+    color: var(--icon-color);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    white-space: nowrap;
+}
+
+.logout-btn:hover {
+    background-color: hsl(0, 0%, 96%);
+}
+
+/* 在线时长统计卡片 */
+.stat-card {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.stat-icon {
+    font-size: 2.5rem;
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    background: hsl(207, 60%, 94%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.stat-label {
+    margin: 0 0 4px;
+    color: var(--weak-color);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.stat-value {
+    margin: 0;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--blue);
+}
+
+/* 预留的未来功能板块 */
+.coming-soon-card h3 {
+    margin: 0 0 8px;
+    font-size: 1.1rem;
+}
+
+.coming-soon-text {
+    margin: 0;
+    color: var(--weak-color);
+    font-style: italic;
+}
+
+/* 未登录状态 */
+#not-logged-in-state {
+    text-align: center;
+    padding: 56px 32px;
+}
+
+.empty-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+}
+
+.empty-subtext {
+    color: var(--weak-color);
+    margin-bottom: 24px;
+}
+
+.back-home-btn {
+    display: inline-block;
+    padding: 11px 28px;
+    background: var(--blue);
+    color: white;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: background-color 0.2s ease;
+}
+
+.back-home-btn:hover {
+    background-color: hsl(212, 100%, 34%);
+}

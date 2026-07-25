@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer's Tool</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+    <header class="admin-header">
+        <h1>Developer's Tool</h1>
+        <p class="subtitle">Add, edit, delete, and search test questions</p>
+    </header>
+
+    <main class="admin-main">
+
+        <!-- 新增 / 编辑 表单：同一个表单复用，编辑时用 question-id 这个隐藏字段区分 -->
+        <section class="card">
+            <h2 id="form-title">Add New Question</h2>
+
+            <!-- novalidate：关掉浏览器自带的校验提示框，必填校验改由 admin.js 手动做（描红代替文字提示） -->
+            <form id="question-form" novalidate>
+                <input type="hidden" id="question-id" value="">
+
+                <div class="form-row form-row-inline">
+                    <div>
+                        <label for="paper-category-select">Test</label>
+                        <select id="paper-category-select">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="paper-year-input">Year</label>
+                        <input type="text" inputmode="numeric" pattern="[0-9]*" id="paper-year-input" placeholder="e.g. 2025">
+                    </div>
+                </div>
+
+                <div class="form-row form-row-inline">
+                    <div>
+                        <label for="question-number-input">Question Number</label>
+                        <input type="number" id="question-number-input" min="1">
+                    </div>
+                    <div>
+                        <label for="subquestion-number-input">Subquestion (a / b / c — leave blank if none)</label>
+                        <input type="text" id="subquestion-number-input" maxlength="5">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label for="question-category-select">Question Type</label>
+                    <select id="question-category-select">
+                        <option value="one-liners">One-Liners</option>
+                        <option value="debugging">Debugging</option>
+                        <option value="get_output">Get-Output</option>
+                        <option value="half-program">Half-Program</option>
+                        <option value="full-program">Full-Program</option>
+                    </select>
+                </div>
+
+                <div class="form-row">
+                    <label for="question-description-input">Question Description</label>
+                    <textarea id="question-description-input" rows="7"></textarea>
+                </div>
+
+                <div class="form-row">
+                    <label for="question-solution-input">Solution</label>
+                    <textarea id="question-solution-input" rows="7"></textarea>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" id="submit-btn">Add Question</button>
+                    <button type="button" id="cancel-edit-btn" style="display: none;">Cancel Edit</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- 查询 / 列表 -->
+        <section class="card">
+            <h2>All Questions</h2>
+
+            <div class="filter-row">
+                <div>
+                    <label for="filter-paper-select">Paper</label>
+                    <select id="filter-paper-select">
+                        <option value="">All Papers</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="filter-category-select">Type</label>
+                    <select id="filter-category-select">
+                        <option value="">All Types</option>
+                        <option value="one-liners">One-Liners</option>
+                        <option value="debugging">Debugging</option>
+                        <option value="get_output">Get-Output</option>
+                        <option value="half-program">Half-Program</option>
+                        <option value="full-program">Full-Program</option>
+                    </select>
+                </div>
+
+                <div class="filter-search-wrap">
+                    <label for="filter-search-input">Search Description</label>
+                    <input type="text" id="filter-search-input" placeholder="Type to search...">
+                </div>
+            </div>
+
+            <div id="questions-count" class="questions-count"></div>
+
+            <div id="questions-folders" class="table-wrap">
+                <!-- 由 JS 动态填充，每个 Test 分类一个可折叠的 folder -->
+            </div>
+        </section>
+
+    </main>
+
+    <div id="toast-container"></div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

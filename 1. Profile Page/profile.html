@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile — Code 100</title>
+    <link rel="stylesheet" href="profile.css">
+    <link rel="icon" type="image/png" href="../0. images/Code 100.png">
+</head>
+<body>
+
+    <div id="header-wrapper">
+        <a id="header" href="../1. Home Page/home_page.html">
+            <h1 id="web-header">Code 100</h1>
+        </a>
+    </div>
+
+    <main class="profile-main">
+
+        <!-- 未登录状态：提示回主页登录 -->
+        <div class="profile-card" id="not-logged-in-state" style="display: none;">
+            <div class="empty-icon">🔒</div>
+            <h2>You're not logged in</h2>
+            <p class="empty-subtext">Log in from the home page to see your profile.</p>
+            <a href="../1. Home Page/home_page.html" class="back-home-btn">Back to Home</a>
+        </div>
+
+        <!-- 已登录状态 -->
+        <div id="profile-content" style="display: none;">
+
+            <!-- 用户信息卡片 -->
+            <div class="profile-card profile-header-card">
+                <div class="avatar-circle" id="avatar-initial">?</div>
+                <div class="profile-header-text">
+                    <h1 id="profile-username">—</h1>
+                    <p id="profile-member-since">Member since —</p>
+                </div>
+                <button id="logout-btn" class="logout-btn">Log out</button>
+            </div>
+
+            <!-- 在线时长统计 -->
+            <div class="profile-card stat-card">
+                <div class="stat-icon">⏱️</div>
+                <div class="stat-text">
+                    <p class="stat-label">Total Time Studied</p>
+                    <p class="stat-value" id="online-time-value">0m</p>
+                </div>
+            </div>
+
+            <!-- 预留板块：未来功能 -->
+            <div class="profile-card coming-soon-card">
+                <h3>Practice Progress</h3>
+                <p class="coming-soon-text">Coming Soon!!</p>
+            </div>
+
+            <div class="profile-card coming-soon-card">
+                <h3>Leaderboard Rank</h3>
+                <p class="coming-soon-text">Coming Soon!!</p>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- footer -->
+    <div id="footer-container"></div>
+
+    <script src="profile.js"></script>
+</body>
+</html>

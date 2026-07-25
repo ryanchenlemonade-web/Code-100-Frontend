@@ -1,0 +1,317 @@
+/* cs1_index_style.css */
+
+:root{
+    --bar-hover-color: hsl(0, 0%, 90%);
+    --background-color:  hsl(0, 0%, 95%);
+    --icon-color: hsl(0, 0%, 15%);
+    --blue: #0066cc;
+    --weak-color: hsl(0, 0%,45%);
+    --logo-height: 59px;
+    --logo-width: 60px;
+
+    /* 题目区块相关变量（testing-engine.css 会用到，放在这里统一管理设计token） */
+    --code-bg: hsl(0, 0%, 96%);
+    --code-text: hsl(0, 0%, 15%);
+    --answer-bg: hsl(140, 40%, 95%);
+    --answer-text: hsl(140, 45%, 25%);
+    --divider-color: hsl(0, 0%, 87%);
+}
+
+
+/* 主页 */
+body{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--background-color);
+    min-width: 828px;
+    min-height: 1vh;
+    margin-bottom: 170px;  /* 底部留白 */
+    background: linear-gradient(135deg, hsl(207, 60%, 96%), hsl(260, 50%, 96%));
+}
+
+#header-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+}
+
+.title-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;      /* 单独控制logo和标题的距离，调这个数值就行 */
+}
+
+#logo{
+    display: flex;
+    margin-top: 5px;
+    width: var(--logo-width);
+    height: var(var(--logo-height));
+}
+
+#web-header{
+    text-decoration: none;
+    display: inline-block;
+    margin-right: 16px;
+}
+
+#web-header h1{
+    text-align: center;
+    font-size: 3rem;
+    color: black;
+}
+
+
+
+@media (max-width: 1170px) {  /* 根据屏幕大小来调整字体大小 */
+    #web-header h1{
+        font-size: 2.5rem;
+    }
+}
+
+#slogan {
+    text-align: center;
+    width: 100%;  
+    font-size: 1rem;
+    color: var(--weak-color);
+    margin-top: -40px;
+    padding-bottom: 7px;
+    font-style: italic;
+}
+
+
+
+
+/* 目录栏 */
+.nav-bar{
+    position: sticky;
+    top: 0;  /* 吸顶位置 */
+    text-align: center;
+    background-color: white;
+    padding: 15px;
+    box-shadow: 0 0px 8px rgba(0, 0, 0, 0.05);       /* 轻微阴影，制造层次感 */
+    font-size: 0;   /* 消除子元素之间因为换行产生的空隙 */
+    z-index: 100;  /* z-index 越大，涂层越高 */
+}
+
+.bar-items{
+    text-decoration: none;
+    color: black;
+    padding: 15px 120px;   /* 从 80px 加大到 120px，间距更宽 */
+    font-size: 1.1rem;    /* 字号稍微加大 */
+    transition: color 0.2s ease;
+}
+
+.bar-items:hover {
+    font-weight: 450;
+    background-color: hsl(0, 0%, 95%);
+}
+
+.bar-items.active {
+    font-weight: 450;
+    background-color: hsl(0, 0%, 92%);
+}
+
+.bar-items.active:hover {
+    background-color: hsl(0, 0%, 90%);
+}
+
+
+/* hover背景色递进：绿 → 黄绿 → 橙 → 红 */
+#test1:hover { background-color: hsl(140, 40%, 95%); }
+#test2:hover { background-color: hsl(45, 85%, 94%); }
+#test3:hover { background-color: hsl(28, 85%, 93%); }
+#final:hover { background-color: hsl(0, 60%, 93%); }
+
+/* active背景色递进：绿 → 黄绿 → 橙 → 红 */
+#test1.active { background-color: hsl(140, 40%, 90%); }
+#test2.active { background-color: hsl(45, 85%, 89%); }
+#test3.active { background-color: hsl(28, 85%, 88%); }
+#final.active { background-color: hsl(0, 60%, 88%); }
+
+
+@media (max-width: 1170px) {
+    .bar-items {
+        padding: 15px 60px;   /* 小屏幕也同步加宽一点，从40px改成60px */
+    }
+}
+
+
+
+
+/* sidebar 和 content 的外层容器，让两者用 flex 并排显示 */
+.main-layout {
+    display: flex;
+    align-items: flex-start;   /* sidebar 和 content 顶部对齐 */
+    gap: 24px;                  /* 两者之间的间距 */
+}
+
+
+
+
+/* 侧边栏 */
+.sidebar {
+    background-color: hsl(207, 60%, 88%);
+    width: 260px;
+    flex-shrink: 0;       /* 防止被 content 挤压变形 */
+    /* 不再是 min-height: 100vh，让高度自动贴合内容 */
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-sizing: border-box;
+    border-radius: 24px;          /* 四角圆润，悬浮卡片的关键 */
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);  /* 阴影制造"浮起来"的感觉 */
+    margin: 24px;     /* 卡片跟页面边缘留点距离，不贴边 */
+    margin-top: 65px;
+
+    position: sticky;    /* 吸顶 */
+    top: 117px;  /* 保持间距一致 */
+    z-index: 90;  /* z-index 越大，涂层越高 */
+
+    transition: background-color 0.4s ease,
+                opacity 0.4s ease, transform 0.4s ease, width 0.4s ease,
+                margin 0.4s ease, padding 0.4s ease;   /* 颜色切换 + 考试专注模式收起，都走这里的过渡 */
+
+    /* 淡入效果 */
+    opacity: 0;
+    animation: fadeIn 0.9s ease forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    text-decoration: none;
+    color: var(--icon-color);
+    font-size: 1.2rem;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.sidebar-item .icon {
+    font-size: 1.3rem;
+    line-height: 1;
+}
+
+.sidebar-item:hover {
+    background-color: hsl(0, 0%, 100%, 0.5);
+}
+
+.sidebar-item.active {
+    background-color: hsl(0, 0%, 100%, 0.7);
+}
+
+.sidebar-item.active:hover {
+    background-color: hsl(0, 0%, 100%, 0.7);
+}
+
+
+
+
+
+/* 具体内容 */
+.content {
+    flex: 1;               /* 占满 sidebar 之外的剩余空间 */
+    padding-right: 36px;  /* 右边留白 */
+    padding-left: 50px;  /* 左边留白 */
+    margin-top: 65px;     /* 跟 sidebar 顶部对齐 */
+
+    animation: contentFadeIn 0.9s ease forwards;
+}
+
+
+
+@keyframes contentFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
+/* Practice / Testing / Revision 三个区块的显隐切换：
+   同一时间只显示带 .active 的那一块，其他全部隐藏 */
+.test-section {
+    display: none;
+    opacity: 0;
+}
+
+.test-section.active {
+    display: block;
+}
+
+
+/* 考试专注模式：sidebar 和 navbar 平滑收起，而不是瞬间消失
+   （由 testing-engine.js 里的 enterExamFocusMode / exitExamFocusMode 触发） */
+
+.sidebar.exam-focus-hide {
+    opacity: 0;
+    transform: translateX(-24px);
+    width: 0;
+    padding: 0;
+    margin-left: 0;
+    margin-right: 0;
+    overflow: hidden;
+    pointer-events: none;   /* 收起过程中不能被点到 */
+}
+
+.nav-bar {
+    overflow: hidden;
+    max-height: 120px;   /* 数值只要大于导航栏实际高度即可 */
+    transition: opacity 0.4s ease, transform 0.4s ease, max-height 0.4s ease, padding 0.4s ease;
+}
+
+.nav-bar.exam-focus-hide {
+    opacity: 0;
+    transform: translateY(-12px);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    pointer-events: none;
+}
+
+/* sidebar 收起后，内容区左边距加宽一点，不要紧贴页面边缘 */
+body.exam-focus-mode .content {
+    padding-left: 115px;
+    transition: padding-left 0.4s ease;
+}
+
+/* footer 同样跟着一起收起；加载完成后由 JS 加上 .footer-loaded 才淡入显示，
+   考试专注模式再淡出隐藏。这里统一用 transition（不用 animation），
+   避免两者作用在同一个属性上互相覆盖导致过渡失效。
+   注意：这里不能对 #footer-container 加 transform，因为 footer.html 自带的
+   footer 元素是 position:fixed，祖先一旦有 transform 就会劫持它的定位基准 */
+#footer-container {
+    overflow: hidden;
+    max-height: 400px;   /* 数值只要大于 footer 实际高度即可 */
+    opacity: 0;
+    transition: opacity 0.6s ease, max-height 0.4s ease;
+}
+
+#footer-container.footer-loaded {
+    opacity: 1;
+}
+
+#footer-container.exam-focus-hide {
+    opacity: 0;
+    max-height: 0;
+    pointer-events: none;
+}

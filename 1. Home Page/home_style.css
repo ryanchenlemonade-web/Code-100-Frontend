@@ -1,0 +1,250 @@
+
+
+:root{
+    --bar-hover-color: hsl(0, 0%, 90%);
+    --background-color:  hsl(0, 0%, 95%);
+    --icon-color: hsl(0, 0%, 15%);
+    --blue: #0066cc;
+    --weak-color: hsl(0, 0%,45%);
+    --logo-height: 59px;
+    --logo-width: 60px;
+}
+
+
+
+/* 主页 */
+body{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--background-color);
+    min-width: 828px;
+    min-height: 1vh;
+    margin-bottom: 170px;  /* 底部留白 */
+}
+
+#web-header{
+    text-align: center;
+    font-size: 3rem;
+    color: black;
+}
+
+#header{
+    text-decoration: none;
+    display: inline-block;
+}
+
+#header-wrapper {
+    text-align: center;
+}
+
+
+@media (max-width: 1170px) {  /* 根据屏幕大小来调整字体大小 */
+    #web-header {
+        font-size: 2.5rem;
+    }
+}
+
+#slogan {
+    text-align: center;
+    font-size: 1rem;
+    color: hsl(0, 0%,40%);
+    margin-top: -27px;
+    margin-bottom: 40px;
+    font-style: italic;
+}
+
+#logo{
+    position: absolute;
+    top: -8%;
+    left: 15%;
+    width: var(--logo-width);
+    height: var(var(--logo-height));
+}
+
+
+/* 目录栏 */
+.nav-bar{
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    text-align: center;
+    background-color: white;
+    padding: 15px;  
+}
+
+#cs, #ds, #c3, #la{
+    word-spacing: normal;  /* CS 中间的空格保持不变 */ 
+}
+
+.bar-items{
+    text-decoration: none;   /* 去下划线 */
+    color: black;
+    padding: 15px 80px;  /* 上下15px，左右60px */
+}
+
+@media (max-width: 1170px) {  /* 根据屏幕大小来调整字体间距 */
+    .bar-items {
+        padding: 15px 40px;
+    }
+}
+
+
+
+
+
+/* 下拉栏 */
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+
+.dropdown-menu {
+    position: absolute;
+    top: calc(100% + 15px);
+    left: 0;
+    width: 100%;
+    background-color: white;
+    padding: 8px 0;
+    z-index: 10;
+
+    transform-origin: top;
+    transform: scaleY(0);
+    opacity: 0;
+    visibility: hidden;
+    transition: transform 0.28s ease, opacity 0.2s ease, visibility 0.25s;
+}
+
+.bar-items:hover{
+    font-weight: 450;
+}
+
+
+.dropdown:hover .dropdown-menu {
+    transform: scaleY(1);
+    opacity: 1;
+    visibility: visible;
+}
+
+
+.dropdown-cs, .dropdown-math {
+    display: block;
+    text-decoration: none;
+    text-align: center;
+    color: #1d1d1f;
+    font-size: 17px;
+    padding: 14px 0;
+    white-space: nowrap;
+}
+
+.dropdown-cs:hover, .dropdown-math:hover{
+    color: var(--blue);
+}
+
+
+
+
+
+
+/* Introduction */
+.intro {
+    max-width: 720px;        /* 限制每行文字的宽度,避免一行太长难阅读 */
+    margin: 60px auto;       /* 上下留白 + 水平居中 */
+    padding: 0 20px;
+    line-height: 1.8;        /* 加大行距,长段落读起来不会挤 */
+    color: #333;
+
+    animation: fadeInUp 0.8s ease forwards;
+}
+
+
+@keyframes fadeInUp {  /* 文字显示动画 */
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
+.intro h3 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 24px;
+    color: #1d1d1f;
+}
+
+.intro p {
+    font-size: 16px;
+    margin-bottom: 20px;     /* 段落之间留出间距,不要紧贴 */
+}
+
+#thx{
+    margin-bottom: 0;
+    font-weight: 600;        /* 最后一句"感谢"加粗,像个结尾的小重音 */
+    font-size: 1.2rem;
+}
+
+
+#ps{
+    color: var(--weak-color);
+    font-style: italic;
+}
+
+b{
+    font-weight: 600;
+}
+
+
+
+
+/* Meet the Developer */
+#ryan{  /* 照片 */
+    height: 24%;
+    width: 24%;
+}
+
+.developers{
+    display: flex;
+    align-items: center;
+    gap: 30px;
+}
+
+
+.developers-intro p:first-child{  /* 姓名 */
+    color: var(--blue);
+    font-size: 1.17rem;
+    font-weight: 450;
+}
+
+.developers-intro p, .dev-links{  /* 介绍 */
+    margin: 0.4rem;
+    font-size: 1.15rem;
+}
+
+
+.dev-links a{
+    color: var(--icon-color);
+    font-size: 20px;
+}
+
+.dev-links{
+    display: inline-flex;
+    gap: 8px;
+}
+
+.dev-links a:hover{
+    color: var(--blue);
+}
+
+
+
+/* Updates */
+.updates p{
+    font-size: 1.3rem;
+}
+
+
+

@@ -1,0 +1,336 @@
+/* admin.css */
+
+:root {
+    --admin-blue: #0066cc;
+    --admin-bg: hsl(0, 0%, 96%);
+    --admin-border: hsl(0, 0%, 87%);
+    --admin-text: hsl(0, 0%, 15%);
+    --admin-weak: hsl(0, 0%, 45%);
+    --admin-danger: hsl(0, 70%, 48%);
+    --admin-danger-hover: hsl(0, 70%, 40%);
+    --admin-success-bg: hsl(140, 45%, 94%);
+    --admin-success-border: hsl(140, 45%, 40%);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--admin-bg);
+    color: var(--admin-text);
+    margin: 0;
+    padding-bottom: 80px;
+}
+
+.admin-header {
+    text-align: center;
+    padding: 32px 20px 20px;
+}
+
+.admin-header h1 {
+    margin: 0;
+    font-size: 2rem;
+}
+
+.admin-header .subtitle {
+    color: var(--admin-weak);
+    margin-top: 6px;
+}
+
+.admin-main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.card {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 24px 28px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.card h2 {
+    margin-top: 0;
+}
+
+.form-row {
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-row-inline {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.form-row-inline > div {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+label {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+    padding: 10px 12px;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    background: #ffffff;
+    color: var(--admin-text);
+}
+
+textarea {
+    font-family: Consolas, Monaco, 'Courier New', monospace;
+    resize: vertical;
+    /* 在文本框内部滚动到顶/底之后，继续滚动不会带动整个页面一起滚 */
+    overscroll-behavior: contain;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--admin-blue);
+}
+
+/* 必填字段没填时，直接描红，不用浏览器原生的提示气泡 */
+.input-error {
+    border-color: var(--admin-danger) !important;
+    background-color: hsl(0, 70%, 98%);
+}
+
+.form-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+button {
+    padding: 10px 22px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+#submit-btn {
+    background-color: var(--admin-blue);
+    color: white;
+}
+
+#submit-btn:hover {
+    background-color: hsl(212, 100%, 34%);
+}
+
+#cancel-edit-btn {
+    background-color: hsl(0, 0%, 92%);
+    color: var(--admin-text);
+}
+
+#cancel-edit-btn:hover {
+    background-color: hsl(0, 0%, 85%);
+}
+
+.filter-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 2fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.filter-row > div {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.questions-count {
+    color: var(--admin-weak);
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+}
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+/* 每个 Test 分类一个可折叠的小 folder，内部按年份从新到旧排序 */
+.paper-folder {
+    border: 1px solid var(--admin-border);
+    border-radius: 10px;
+    margin-bottom: 14px;
+    overflow: hidden;
+}
+
+.paper-folder summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 12px 16px;
+    background-color: hsl(0, 0%, 97%);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+}
+
+.paper-folder summary::-webkit-details-marker {
+    display: none;
+}
+
+.paper-folder summary::before {
+    content: '▸';
+    display: inline-block;
+    transition: transform 0.15s ease;
+    color: var(--admin-weak);
+}
+
+.paper-folder[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.paper-folder summary:hover {
+    background-color: hsl(0, 0%, 93%);
+}
+
+.paper-folder .folder-count {
+    font-weight: 400;
+    color: var(--admin-weak);
+    font-size: 0.85rem;
+}
+
+.paper-folder table {
+    margin-top: 0;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--admin-border);
+    vertical-align: top;
+}
+
+th {
+    color: var(--admin-weak);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+td.description-cell {
+    max-width: 320px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: Consolas, Monaco, 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: var(--admin-weak);
+}
+
+.type-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background-color: hsl(0, 0%, 90%);
+    color: hsl(0, 0%, 35%);
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.row-actions {
+    display: flex;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.edit-btn,
+.delete-btn {
+    padding: 6px 14px;
+    font-size: 0.85rem;
+}
+
+.edit-btn {
+    background-color: hsl(0, 0%, 92%);
+    color: var(--admin-text);
+}
+
+.edit-btn:hover {
+    background-color: hsl(0, 0%, 85%);
+}
+
+.delete-btn {
+    background-color: var(--admin-danger);
+    color: white;
+}
+
+.delete-btn:hover {
+    background-color: var(--admin-danger-hover);
+}
+
+.empty-state {
+    text-align: center;
+    color: var(--admin-weak);
+    padding: 40px 20px;
+    font-style: italic;
+}
+
+/* 编辑模式下,给表单一个轻微的高亮提示 */
+.card.editing {
+    border: 2px solid var(--admin-blue);
+}
+
+/* 右上角小提示条，操作成功/失败时弹出（放右上角，比右下角更显眼，不会被页面拉长后挡住） */
+#toast-container {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 1000;
+}
+
+.admin-toast {
+    background: #ffffff;
+    border-left: 8px solid var(--admin-success-border);
+    border-radius: 12px;
+    padding: 20px 26px;
+    max-width: 380px;
+    font-size: 1.1rem;
+    font-weight: 500;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    animation: toastIn 0.25s ease;
+}
+
+.admin-toast.error {
+    border-left-color: var(--admin-danger);
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
