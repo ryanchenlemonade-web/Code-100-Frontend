@@ -1,7 +1,7 @@
 // profile.js
 
-const AUTH_API_BASE = 'http://localhost:8080/api/auth';
-const ACTIVITY_API_BASE = 'http://localhost:8080/api/activity';
+const AUTH_API_BASE = APP_API_BASE + '/api/auth';
+const ACTIVITY_API_BASE = APP_API_BASE + '/api/activity';
 const TOKEN_KEY = 'csci1100_auth_token';
 
 function getToken() {

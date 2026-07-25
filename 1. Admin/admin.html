@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Developer's Tool</title>
     <link rel="stylesheet" href="admin.css">
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 
@@ -56,6 +57,15 @@
                         <option value="half-program">Half-Program</option>
                         <option value="full-program">Full-Program</option>
                     </select>
+                </div>
+
+                <div class="form-row scan-row">
+                    <label for="scan-image-input">Scan Question from Image (optional)</label>
+                    <div class="scan-controls">
+                        <input type="file" id="scan-image-input" accept="image/*">
+                        <button type="button" id="scan-image-btn" class="scan-btn">Scan → Fill Description</button>
+                    </div>
+                    <span id="scan-status" class="scan-status"></span>
                 </div>
 
                 <div class="form-row">
@@ -116,6 +126,7 @@
 
     <div id="toast-container"></div>
 
+    <script src="../0. Shared/config.js"></script>
     <script src="admin.js"></script>
 </body>
 </html>

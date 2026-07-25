@@ -1,6 +1,6 @@
 // admin.js
 
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = APP_API_BASE + '/api';
 
 // 缓存拉回来的数据，筛选的时候直接在这份数据上过滤，不用每次都重新发请求
 let allPapers = [];      // 所有试卷 [{id, paper_category, paper_year}, ...]
@@ -282,6 +282,51 @@ function exitEditMode() {
 }
 
 cancelEditBtn.addEventListener('click', exitEditMode);
+
+// ---------- 图片扫描（OCR）：拍照/上传题目图片，自动识别文字填进 Question Description ----------
+const scanImageInput = document.getElementById('scan-image-input');
+const scanImageBtn = document.getElementById('scan-image-btn');
+const scanStatus = document.getElementById('scan-status');
+
+scanImageBtn.addEventListener('click', async () => {
+    const file = scanImageInput.files[0];
+    if (!file) {
+        scanStatus.textContent = 'Please choose an image first.';
+        scanStatus.className = 'scan-status error';
+        return;
+    }
+
+    scanImageBtn.disabled = true;
+    scanStatus.className = 'scan-status';
+    scanStatus.textContent = 'Scanning... 0%';
+
+    try {
+        const result = await Tesseract.recognize(file, 'eng', {
+            logger: (info) => {
+                if (info.status === 'recognizing text') {
+                    scanStatus.textContent = `Scanning... ${Math.round(info.progress * 100)}%`;
+                }
+            }
+        });
+
+        const extractedText = result.data.text.trim();
+
+        if (!extractedText) {
+            scanStatus.textContent = 'No text detected. Try a clearer image.';
+            scanStatus.className = 'scan-status error';
+        } else {
+            questionDescriptionInput.value = extractedText;
+            scanStatus.textContent = 'Done! Please review the text below for accuracy — OCR is not perfect, especially with code formatting.';
+            scanStatus.className = 'scan-status success';
+        }
+    } catch (error) {
+        console.error('OCR failed:', error);
+        scanStatus.textContent = 'Scan failed. Please try again.';
+        scanStatus.className = 'scan-status error';
+    }
+
+    scanImageBtn.disabled = false;
+});
 
 // 必填字段（Test / Year / Question Number / Question Type / Question Description）
 // Subquestion 和 Solution 不是必填，不放进这个列表

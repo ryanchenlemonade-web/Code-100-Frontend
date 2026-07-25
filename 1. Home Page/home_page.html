@@ -15,7 +15,7 @@
         <a id="header" href="home_page.html">
             <h1 id="web-header">Code 100</h1>
         </a>
-        <p id="slogan">Here you can find all the Past Exams</p>
+        <p id="slogan">Free resources for all RPI students</p>
     </div>
     
     
@@ -128,7 +128,10 @@
                     </div>
                     <div class="auth-form-row">
                         <label for="login-password">Password</label>
-                        <input type="password" id="login-password" required>
+                        <div class="password-input-wrap">
+                            <input type="password" id="login-password" required>
+                            <button type="button" class="toggle-password-btn" id="toggle-login-password" aria-label="Show password">👁️</button>
+                        </div>
                     </div>
                     <button type="submit" class="auth-submit-btn">Log In</button>
                 </form>
@@ -145,6 +148,7 @@
                     <div class="auth-form-row">
                         <label for="register-username">Username</label>
                         <input type="text" id="register-username" placeholder="e.g. RCS ID" required>
+                        <span class="auth-hint">Tip: using your RCS ID makes it easier to remember</span>
                     </div>
                     <div class="auth-form-row">
                         <label for="register-email">Email</label>
@@ -152,11 +156,17 @@
                     </div>
                     <div class="auth-form-row">
                         <label for="register-password">Password (6+ characters)</label>
-                        <input type="password" id="register-password" minlength="6" required>
+                        <div class="password-input-wrap">
+                            <input type="password" id="register-password" minlength="6" required>
+                            <button type="button" class="toggle-password-btn" id="toggle-register-password" aria-label="Show password">👁️</button>
+                        </div>
                     </div>
                     <div class="auth-form-row">
                         <label for="register-confirm-password">Confirm Password</label>
-                        <input type="password" id="register-confirm-password" minlength="6" required>
+                        <div class="password-input-wrap">
+                            <input type="password" id="register-confirm-password" minlength="6" required>
+                            <button type="button" class="toggle-password-btn" id="toggle-register-confirm-password" aria-label="Show password">👁️</button>
+                        </div>
                     </div>
                     <button type="submit" class="auth-submit-btn">Sign Up</button>
                 </form>
@@ -182,6 +192,7 @@
         </div>
     </div>
 
+    <script src="../0. Shared/config.js"></script>
     <script src="home_page.js"></script>
     <script src="auth.js"></script>
 </body>

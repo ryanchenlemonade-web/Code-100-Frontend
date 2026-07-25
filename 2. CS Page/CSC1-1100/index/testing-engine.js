@@ -88,7 +88,7 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
         params.set('questionCategory', questionCategory);
     }
 
-    fetch(`http://localhost:8080/api/questions/practice-by-category?${params.toString()}`)
+    fetch(`${APP_API_BASE}/api/questions/practice-by-category?${params.toString()}`)
         .then(response => response.json())
         .then(data => {
             // 只有选 "All" 时（没有指定具体题型）才需要标注每道题的题型，
@@ -278,7 +278,7 @@ function loadTestingQuestions(paperId, paperTitle) {
         });
     }
 
-    fetch(`http://localhost:8080/api/questions/practice/${paperId}`)
+    fetch(`${APP_API_BASE}/api/questions/practice/${paperId}`)
         .then(response => response.json())
         .then(data => {
             data.forEach(question => {

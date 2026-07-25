@@ -5,7 +5,7 @@
 // 所以只要用户在主页登录过，来到这个页面就会自动开始计时，不需要重新登录。
 
 const TOKEN_KEY = 'csci1100_auth_token';
-const ACTIVITY_API_BASE = 'http://localhost:8080/api/activity';
+const ACTIVITY_API_BASE = APP_API_BASE + '/api/activity';
 
 let heartbeatInterval = null;
 

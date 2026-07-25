@@ -32,7 +32,7 @@ const contentContainer = document.getElementById('content-container');
 
 // 页面加载时调用一次，把所有试卷按分类拉回来并缓存
 function fetchPapersGrouped() {
-    return fetch('http://localhost:8080/api/papers/grouped')
+    return fetch(`${APP_API_BASE}/api/papers/grouped`)
         .then(res => res.json())
         .then(data => { papersByCategory = data; })
         .catch(error => console.error('Failed to Obtain Papers:', error));

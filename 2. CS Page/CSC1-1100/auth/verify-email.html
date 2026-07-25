@@ -44,6 +44,7 @@
         <a class="btn" href="../index/cs1_index.html">Go to site</a>
     </div>
 
+    <script src="../../../0. Shared/config.js"></script>
     <script>
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
@@ -53,7 +54,7 @@
             statusEl.textContent = 'Missing verification token.';
             statusEl.className = 'error';
         } else {
-            fetch(`http://localhost:8080/api/auth/verify-email?token=${encodeURIComponent(token)}`)
+            fetch(`${APP_API_BASE}/api/auth/verify-email?token=${encodeURIComponent(token)}`)
                 .then(res => res.json().then(data => ({ ok: res.ok, data })))
                 .then(({ ok, data }) => {
                     statusEl.textContent = data.message || data.error;

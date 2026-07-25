@@ -1,7 +1,7 @@
 // auth.js
 
-const AUTH_API_BASE = 'http://localhost:8080/api/auth';
-const ACTIVITY_API_BASE = 'http://localhost:8080/api/activity';
+const AUTH_API_BASE = APP_API_BASE + '/api/auth';
+const ACTIVITY_API_BASE = APP_API_BASE + '/api/activity';
 const TOKEN_KEY = 'csci1100_auth_token';
 
 let heartbeatInterval = null;
@@ -316,6 +316,24 @@ document.getElementById('forgot-password-form').addEventListener('submit', async
         showAuthMessage('auth-view-forgot', 'Something went wrong. Please try again.', true);
     }
 });
+
+// ---------- 密码显示/隐藏切换 ----------
+function setupPasswordToggle(inputId, toggleBtnId) {
+    const input = document.getElementById(inputId);
+    const btn = document.getElementById(toggleBtnId);
+    if (!input || !btn) return;
+
+    btn.addEventListener('click', () => {
+        const isHidden = input.type === 'password';
+        input.type = isHidden ? 'text' : 'password';
+        btn.textContent = isHidden ? '🙈' : '👁️';
+        btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+    });
+}
+
+setupPasswordToggle('login-password', 'toggle-login-password');
+setupPasswordToggle('register-password', 'toggle-register-password');
+setupPasswordToggle('register-confirm-password', 'toggle-register-confirm-password');
 
 // ---------- 初始化 ----------
 checkAuthStatus();
