@@ -152,7 +152,7 @@ body{
 
 /* 侧边栏 */
 .sidebar {
-    background-color: hsl(207, 60%, 88%);
+    background-color: hsl(140, 40%, 85%);
     width: 260px;
     flex-shrink: 0;       /* 防止被 content 挤压变形 */
     /* 不再是 min-height: 100vh，让高度自动贴合内容 */
