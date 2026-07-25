@@ -169,6 +169,20 @@ function showAuthMessage(viewId, message, isError) {
     view.insertBefore(msgEl, view.firstChild);
 }
 
+// 给表单的提交按钮设置"加载中"状态：禁用按钮 + 换文案，避免用户以为卡住了。
+// 返回一个 restore() 函数，请求结束（不管成功/失败）后调用它恢复按钮原状。
+function setFormLoading(form, loadingText) {
+    const btn = form.querySelector('button[type="submit"]');
+    if (!btn) return () => {};
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = loadingText;
+    return () => {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    };
+}
+
 // 校验一组必填字段：没填的直接描红，不弹浏览器原生提示。返回 true/false 表示是否通过
 function validateRequired(fields) {
     let isValid = true;
@@ -201,6 +215,8 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const usernameOrEmail = identifierInput.value.trim();
     const password = passwordInput.value;
 
+    const restoreBtn = setFormLoading(e.target, 'Logging in...');
+
     try {
         const response = await fetch(`${AUTH_API_BASE}/login`, {
             method: 'POST',
@@ -214,10 +230,16 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 
             if (response.status === 403) {
                 const view = document.getElementById('auth-view-login');
+
+                // 先移除已存在的 resend 按钮（无论它是否正在 Sending 中），避免重复插入
+                const existingResendBtn = view.querySelector('.resend-verification-btn');
+                if (existingResendBtn) existingResendBtn.remove();
+
                 const resendBtn = document.createElement('button');
                 resendBtn.type = 'button';
+                resendBtn.className = 'resend-verification-btn';
                 resendBtn.textContent = 'Resend verification email';
-                resendBtn.style.cssText = 'width:100%; margin-top:8px; padding:9px; border:1px solid var(--divider-color); border-radius:8px; background:#fff; cursor:pointer; font-size:0.85rem;';
+                resendBtn.style.cssText = 'width:100%; margin-top:-8px; margin-bottom:12px; padding:9px; border:1px solid var(--divider-color); border-radius:8px; background:#fff; cursor:pointer; font-size:0.85rem;';
                 resendBtn.addEventListener('click', async () => {
                     resendBtn.disabled = true;
                     resendBtn.textContent = 'Sending...';
@@ -231,8 +253,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
                         showAuthMessage('auth-view-login', resendData.message || resendData.error, !resendResponse.ok);
                     } catch (err) {
                         showAuthMessage('auth-view-login', 'Failed to resend. Please try again.', true);
+                    } finally {
+                        resendBtn.remove();
                     }
-                    resendBtn.remove();
                 });
                 view.querySelector('.auth-message').insertAdjacentElement('afterend', resendBtn);
             }
@@ -249,6 +272,8 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         document.getElementById('login-form').reset();
     } catch (error) {
         showAuthMessage('auth-view-login', 'Something went wrong. Please try again.', true);
+    } finally {
+        restoreBtn();
     }
 });
 
@@ -274,6 +299,8 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     }
     confirmPasswordInput.classList.remove('input-error');
 
+    const restoreBtn = setFormLoading(e.target, 'Signing up...');
+
     try {
         const response = await fetch(`${AUTH_API_BASE}/register`, {
             method: 'POST',
@@ -291,6 +318,8 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
         document.getElementById('register-form').reset();
     } catch (error) {
         showAuthMessage('auth-view-register', 'Something went wrong. Please try again.', true);
+    } finally {
+        restoreBtn();
     }
 });
 
@@ -303,6 +332,8 @@ document.getElementById('forgot-password-form').addEventListener('submit', async
 
     const email = emailInput.value.trim();
 
+    const restoreBtn = setFormLoading(e.target, 'Sending...');
+
     try {
         const response = await fetch(`${AUTH_API_BASE}/forgot-password`, {
             method: 'POST',
@@ -314,6 +345,8 @@ document.getElementById('forgot-password-form').addEventListener('submit', async
         document.getElementById('forgot-password-form').reset();
     } catch (error) {
         showAuthMessage('auth-view-forgot', 'Something went wrong. Please try again.', true);
+    } finally {
+        restoreBtn();
     }
 });
 
