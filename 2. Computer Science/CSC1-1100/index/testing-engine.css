@@ -82,6 +82,39 @@
     border-bottom: 1px solid var(--divider-color);
 }
 
+/* 请求还没回来时显示的"加载中"提示，带一个简单的旋转小图标，避免用户以为卡住了 */
+.questions-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 32px 4px;
+    color: var(--text-secondary, #666);
+    font-size: 0.95rem;
+}
+
+.questions-loading::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--divider-color);
+    border-top-color: hsl(207, 70%, 55%);
+    border-radius: 50%;
+    animation: questionsLoadingSpin 0.7s linear infinite;
+}
+
+@keyframes questionsLoadingSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* 请求失败时的提示，颜色跟登录/注册那边的错误提示保持一致的红色调 */
+.questions-error {
+    padding: 24px 16px;
+    border-radius: 8px;
+    background-color: hsl(0, 70%, 96%);
+    color: hsl(0, 70%, 40%);
+    font-size: 0.95rem;
+}
+
 .question-label-row {
     display: flex;
     align-items: center;

@@ -200,3 +200,11 @@ fetch('../../../0.%20Footer/footer.html')
         footerEl.innerHTML = html;
         footerEl.classList.add('footer-loaded');   // 内容插入之后再加这个 class，触发淡入动画
 });
+
+// 登录/注册/忘记密码 弹窗（共用片段，见 0. Shared/auth-modal.html）
+fetch('../../../0.%20Shared/auth-modal.html')
+    .then(res => res.text())
+    .then(html => {
+        document.getElementById('auth-modal-container').innerHTML = html;
+        if (window.initAuthModal) window.initAuthModal();
+    });

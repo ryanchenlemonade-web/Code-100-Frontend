@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Code 100</title>
     <link rel="stylesheet" href="home_style.css">
-    <link rel="stylesheet" href="auth.css">
-    <script src="https://kit.fontawesome.com/925aa7b7b9.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="../0. Shared/auth.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="icon" type="image/png" href="../0. images/Code 100.png">
 </head>
 <body>
@@ -113,87 +113,11 @@
     <!-- footer -->
     <div id="footer-container"></div>
 
-    <!-- 登录 / 注册 / 忘记密码 弹窗 -->
-    <div id="auth-modal-overlay">
-        <div id="auth-modal">
-            <button id="auth-modal-close">&times;</button>
-
-            <!-- 登录 -->
-            <div class="auth-view active" id="auth-view-login">
-                <h2>Log In</h2>
-                <form id="login-form" novalidate>
-                    <div class="auth-form-row">
-                        <label for="login-identifier">Username or Email</label>
-                        <input type="text" id="login-identifier" required>
-                    </div>
-                    <div class="auth-form-row">
-                        <label for="login-password">Password</label>
-                        <div class="password-input-wrap">
-                            <input type="password" id="login-password" required>
-                            <button type="button" class="toggle-password-btn" id="toggle-login-password" aria-label="Show password">👁️</button>
-                        </div>
-                    </div>
-                    <button type="submit" class="auth-submit-btn">Log In</button>
-                </form>
-                <div class="auth-switch-row">
-                    <a href="#" data-switch-view="forgot">Forgot password?</a><br>
-                    Don't have an account? <a href="#" data-switch-view="register">Sign up</a>
-                </div>
-            </div>
-
-            <!-- 注册 -->
-            <div class="auth-view" id="auth-view-register">
-                <h2>Sign Up</h2>
-                <form id="register-form" novalidate>
-                    <div class="auth-form-row">
-                        <label for="register-username">Username</label>
-                        <input type="text" id="register-username" placeholder="e.g. RCS ID" required>
-                        <span class="auth-hint">Tip: using your RCS ID makes it easier to remember</span>
-                    </div>
-                    <div class="auth-form-row">
-                        <label for="register-email">Email</label>
-                        <input type="email" id="register-email" required>
-                    </div>
-                    <div class="auth-form-row">
-                        <label for="register-password">Password (6+ characters)</label>
-                        <div class="password-input-wrap">
-                            <input type="password" id="register-password" minlength="6" required>
-                            <button type="button" class="toggle-password-btn" id="toggle-register-password" aria-label="Show password">👁️</button>
-                        </div>
-                    </div>
-                    <div class="auth-form-row">
-                        <label for="register-confirm-password">Confirm Password</label>
-                        <div class="password-input-wrap">
-                            <input type="password" id="register-confirm-password" minlength="6" required>
-                            <button type="button" class="toggle-password-btn" id="toggle-register-confirm-password" aria-label="Show password">👁️</button>
-                        </div>
-                    </div>
-                    <button type="submit" class="auth-submit-btn">Sign Up</button>
-                </form>
-                <div class="auth-switch-row">
-                    Already have an account? <a href="#" data-switch-view="login">Log in</a>
-                </div>
-            </div>
-
-            <!-- 忘记密码 -->
-            <div class="auth-view" id="auth-view-forgot">
-                <h2>Reset Password</h2>
-                <form id="forgot-password-form" novalidate>
-                    <div class="auth-form-row">
-                        <label for="forgot-email">Email</label>
-                        <input type="email" id="forgot-email" required>
-                    </div>
-                    <button type="submit" class="auth-submit-btn">Send Reset Link</button>
-                </form>
-                <div class="auth-switch-row">
-                    <a href="#" data-switch-view="login">Back to login</a>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- 登录 / 注册 / 忘记密码 弹窗（内容从共用片段 fetch 进来，见 home_page.js） -->
+    <div id="auth-modal-container"></div>
 
     <script src="../0. Shared/config.js"></script>
     <script src="home_page.js"></script>
-    <script src="auth.js"></script>
+    <script src="../0. Shared/auth.js"></script>
 </body>
 </html>

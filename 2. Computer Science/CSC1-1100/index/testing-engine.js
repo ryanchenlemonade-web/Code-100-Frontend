@@ -25,6 +25,27 @@ function triggerFadeIn(el) {
     el.style.animation = 'contentFadeIn 0.9s ease forwards';
 }
 
+// 在题目容器里显示一个"加载中"的提示，请求还没回来之前用，避免用户以为卡住/出bug了。
+// 后续拿到数据（或者报错）时，会把这块内容整个清掉替换掉，不用单独去移除它。
+function showQuestionsLoading(container, message = 'Loading questions...') {
+    if (!container) return;
+    container.innerHTML = '';
+    const loadingEl = document.createElement('div');
+    loadingEl.className = 'questions-loading';
+    loadingEl.textContent = message;
+    container.appendChild(loadingEl);
+}
+
+// 请求失败时，把"加载中"换成一个用户能看懂的错误提示，而不是让容器一直空着/停在加载状态
+function showQuestionsError(container, message = 'Failed to load questions. Please try refreshing the page.') {
+    if (!container) return;
+    container.innerHTML = '';
+    const errorEl = document.createElement('div');
+    errorEl.className = 'questions-error';
+    errorEl.textContent = message;
+    container.appendChild(errorEl);
+}
+
 // 把数据库里的原始题型值统一格式化成"小写 + 连字符"，跟题型下拉框的选项风格保持一致
 // （例如 get_output -> get-output），不管数据库里实际存的是下划线还是别的写法
 function formatQuestionType(rawCategory) {
@@ -81,7 +102,8 @@ function buildQuestionBlock(question, options = {}) {
 function loadPracticeQuestionsByCategory(category, questionCategory) {
     const questionsWrap = document.getElementById('practice-questions');
     if (!questionsWrap) return;
-    questionsWrap.innerHTML = '';
+
+    showQuestionsLoading(questionsWrap);
 
     const params = new URLSearchParams({ category });
     if (questionCategory) {
@@ -91,6 +113,8 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
     fetch(`${APP_API_BASE}/api/questions/practice-by-category?${params.toString()}`)
         .then(response => response.json())
         .then(data => {
+            questionsWrap.innerHTML = '';   // 清掉加载提示，再填真正的题目
+
             // 只有选 "All" 时（没有指定具体题型）才需要标注每道题的题型，
             // 如果已经按某个题型筛选了，所有题都是同一类型，标了也是多余信息
             const showType = !questionCategory;
@@ -129,7 +153,10 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
 
             triggerFadeIn(questionsWrap);
         })
-        .catch(error => console.error('Failed to Obtain Practice Questions:', error));
+        .catch(error => {
+            console.error('Failed to Obtain Practice Questions:', error);
+            showQuestionsError(questionsWrap);
+        });
 }
 
 // 绑定 Practice 题型筛选下拉框的变化事件（每次切换 Test 分类、重新生成骨架后都要重新绑定，
@@ -278,9 +305,13 @@ function loadTestingQuestions(paperId, paperTitle) {
         });
     }
 
+    showQuestionsLoading(questionsContainer);
+
     fetch(`${APP_API_BASE}/api/questions/practice/${paperId}`)
         .then(response => response.json())
         .then(data => {
+            questionsContainer.innerHTML = '';   // 清掉加载提示，再填真正的题目
+
             data.forEach(question => {
                 const wrapper = buildQuestionBlock(question);
 
@@ -296,7 +327,10 @@ function loadTestingQuestions(paperId, paperTitle) {
 
             triggerFadeIn(questionsContainer);
         })
-        .catch(error => console.error('Failed to Obtain Testing Questions:', error));
+        .catch(error => {
+            console.error('Failed to Obtain Testing Questions:', error);
+            showQuestionsError(questionsContainer);
+        });
 }
 
 // 侧边小提示条（替代浏览器原生 alert），不需要点确认，3秒后自动消失

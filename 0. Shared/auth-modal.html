@@ -1,0 +1,85 @@
+<!-- auth-modal.html -->
+<!-- 登录 / 注册 / 忘记密码 弹窗：抽成共用片段，任何页面都能用 fetch 把这份内容塞进
+     <div id="auth-modal-container"></div> 里，然后调用 window.initAuthModal() 就能用。
+     首页 (home_page.html) 是唯一的例外——它的 modal 内容直接写死在 HTML 里，不用走 fetch。
+     ⚠️ 密码显示/隐藏那两个小图标用的是 FontAwesome 的 fa-solid 风格（fa-eye / fa-eye-slash）。
+     用的是 fa-solid 不是 fa-regular，是因为 fa-regular 风格的 eye 图标在免费版里不可用（付费才有），
+     fa-solid 风格才是免费版支持的。用到这份片段的页面记得引入 FontAwesome 的样式表，不然图标不会显示：
+     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" /> -->
+<div id="auth-modal-overlay">
+    <div id="auth-modal">
+        <button id="auth-modal-close">&times;</button>
+
+        <!-- 登录 -->
+        <div class="auth-view active" id="auth-view-login">
+            <h2>Log In</h2>
+            <form id="login-form" novalidate>
+                <div class="auth-form-row">
+                    <label for="login-identifier">Username or Email</label>
+                    <input type="text" id="login-identifier" required>
+                </div>
+                <div class="auth-form-row">
+                    <label for="login-password">Password</label>
+                    <div class="password-input-wrap">
+                        <input type="password" id="login-password" required>
+                        <button type="button" class="toggle-password-btn" id="toggle-login-password" aria-label="Show password"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                </div>
+                <button type="submit" class="auth-submit-btn">Log In</button>
+            </form>
+            <div class="auth-switch-row">
+                <a href="#" data-switch-view="forgot">Forgot password?</a><br>
+                Don't have an account? <a href="#" data-switch-view="register">Sign up</a>
+            </div>
+        </div>
+
+        <!-- 注册 -->
+        <div class="auth-view" id="auth-view-register">
+            <h2>Sign Up</h2>
+            <form id="register-form" novalidate>
+                <div class="auth-form-row">
+                    <label for="register-username">Username</label>
+                    <input type="text" id="register-username" placeholder="e.g. RCS ID" required>
+                    <span class="auth-hint">Tip: using your RCS ID makes it easier to remember</span>
+                </div>
+                <div class="auth-form-row">
+                    <label for="register-email">Email</label>
+                    <input type="email" id="register-email" required>
+                </div>
+                <div class="auth-form-row">
+                    <label for="register-password">Password (6+ characters)</label>
+                    <div class="password-input-wrap">
+                        <input type="password" id="register-password" minlength="6" required>
+                        <button type="button" class="toggle-password-btn" id="toggle-register-password" aria-label="Show password"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                </div>
+                <div class="auth-form-row">
+                    <label for="register-confirm-password">Confirm Password</label>
+                    <div class="password-input-wrap">
+                        <input type="password" id="register-confirm-password" minlength="6" required>
+                        <button type="button" class="toggle-password-btn" id="toggle-register-confirm-password" aria-label="Show password"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                </div>
+                <button type="submit" class="auth-submit-btn">Sign Up</button>
+            </form>
+            <div class="auth-switch-row">
+                Already have an account? <a href="#" data-switch-view="login">Log in</a>
+            </div>
+        </div>
+
+        <!-- 忘记密码 -->
+        <div class="auth-view" id="auth-view-forgot">
+            <h2>Reset Password</h2>
+            <form id="forgot-password-form" novalidate>
+                <div class="auth-form-row">
+                    <label for="forgot-email">Email</label>
+                    <input type="email" id="forgot-email" required>
+                </div>
+                <button type="submit" class="auth-submit-btn">Send Reset Link</button>
+            </form>
+            <div class="auth-switch-row">
+                <a href="#" data-switch-view="login">Back to login</a>
+            </div>
+        </div>
+    </div>
+</div>
