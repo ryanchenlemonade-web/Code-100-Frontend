@@ -366,6 +366,7 @@
 
 #testing-submit-btn {
     margin-top: 8px;
+    margin-bottom: 48px;
 }
 
 #testing-start-btn:disabled,
@@ -396,5 +397,5 @@
 
 #testing-back-to-top-btn {
     display: block;
-    margin: 32px auto 0;
-}
+    margin: 32px auto 48px;
+} 

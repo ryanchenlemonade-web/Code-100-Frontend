@@ -2,9 +2,12 @@
 
 :root {
     --blue: #0066cc;
+    --blue-light: hsl(212, 100%, 96%);
     --icon-color: hsl(0, 0%, 15%);
     --weak-color: hsl(0, 0%, 45%);
-    --divider-color: hsl(0, 0%, 87%);
+    --divider-color: hsl(0, 0%, 90%);
+    --logo-height: 59px;
+    --logo-width: 60px;
 }
 
 * {
@@ -13,150 +16,629 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: linear-gradient(135deg, hsl(207, 60%, 96%), hsl(260, 50%, 96%));
+    background: hsl(220, 25%, 97%);
     min-height: 100vh;
     margin: 0;
-    padding-bottom: 80px;
+    display: flex;
+    flex-direction: column;
     color: var(--icon-color);
 }
 
+/* ---------- 顶部通用 header ---------- */
 #header-wrapper {
     display: flex;
     justify-content: center;
-    padding: 28px 0 12px;
+    padding: 20px 0 8px;
 }
 
-#header {
+.back-home-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--blue);
     text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    transition: background-color 0.2s ease;
 }
 
-#web-header {
-    color: black;
-    font-size: 2rem;
-    margin: 0;
+.back-home-link:hover {
+    background-color: var(--blue-light);
 }
 
+.back-home-arrow {
+    font-size: 0.95rem;
+}
+
+/* ---------- 页面主体 ---------- */
 .profile-main {
-    max-width: 640px;
+    max-width: 760px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 16px 20px 40px;
     display: flex;
     flex-direction: column;
     gap: 20px;
+    flex: 1 0 auto;
+    width: 100%;
 }
 
 .profile-card {
     background: #ffffff;
-    border-radius: 20px;
-    padding: 32px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-    animation: cardFadeIn 0.5s ease forwards;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.06);
+    animation: cardFadeIn 0.45s ease both;
+    transition: box-shadow 0.25s ease, transform 0.25s ease;
 }
 
+/* 微交互：卡片 hover 轻微上浮 + 阴影加深 */
+.profile-card:hover {
+    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.08), 0 14px 32px rgba(16, 24, 40, 0.1);
+    transform: translateY(-2px);
+}
+
+/* 微交互：卡片依次错开入场，而不是同时弹出 */
+.identity-card { animation-delay: 0s; }
+.stats-card { animation-delay: 0.06s; }
+.weekly-card { animation-delay: 0.12s; }
+.badges-card { animation-delay: 0.18s; }
+.activity-card { animation-delay: 0.24s; }
+
 @keyframes cardFadeIn {
-    from { opacity: 0; transform: translateY(12px); }
+    from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* 用户信息卡片 */
-.profile-header-card {
+/* ---------- 1. 身份卡片 ---------- */
+.identity-card {
+    overflow: hidden;
+}
+
+.identity-card:hover {
+    transform: none; /* 身份卡片不参与整体上浮，避免横幅+头像的叠加定位在 hover 时跑位 */
+}
+
+.profile-banner {
+    position: relative;
+    height: 120px;
     display: flex;
     align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, hsl(212, 70%, 92%), hsl(212, 75%, 80%));
+}
+
+.banner-brand {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.banner-logo {
+    width: 76px;
+    height: 76px;
+    object-fit: contain;
+    opacity: 0.45;
+}
+
+.banner-brand-text {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: hsl(212, 15%, 50%);
+    letter-spacing: -0.01em;
+}
+
+.identity-body {
+    display: flex;
+    align-items: flex-end;
     gap: 20px;
+    padding: 0 28px 20px;
+}
+
+.avatar-wrap {
+    position: relative;
+    margin-top: -42px;
+    flex-shrink: 0;
 }
 
 .avatar-circle {
-    width: 72px;
-    height: 72px;
+    width: 84px;
+    height: 84px;
     border-radius: 50%;
-    background: linear-gradient(135deg, hsl(207, 70%, 55%), hsl(260, 60%, 60%));
+    background: linear-gradient(135deg, hsl(207, 75%, 55%), hsl(258, 65%, 60%));
     color: white;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 2rem;
+    font-size: 2.1rem;
     font-weight: 700;
-    flex-shrink: 0;
+    border: 4px solid #ffffff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+    transition: transform 0.2s ease;
 }
 
-.profile-header-text {
+.avatar-wrap:hover .avatar-circle {
+    transform: scale(1.04);
+}
+
+.avatar-online-dot {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: hsl(140, 65%, 45%);
+    border: 3px solid #ffffff;
+}
+
+.identity-main {
     flex: 1;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-top: 12px;
 }
 
-.profile-header-text h1 {
-    margin: 0 0 4px;
-    font-size: 1.5rem;
+.identity-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-.profile-header-text p {
+.identity-text h1 {
     margin: 0;
-    color: var(--weak-color);
-    font-size: 0.9rem;
+    font-size: 1.4rem;
+    line-height: 1.2;
 }
 
-.logout-btn {
-    padding: 9px 20px;
-    border: 1px solid var(--divider-color);
-    border-radius: 10px;
-    background: #ffffff;
-    color: var(--icon-color);
+.member-badge {
+    color: var(--blue);
+    font-size: 0.95rem;
+}
+
+.profile-role {
+    margin: 2px 0 0;
+    color: var(--weak-color);
+    font-size: 0.88rem;
+}
+
+.profile-since {
+    margin: 2px 0 0;
+    color: var(--weak-color);
+    font-size: 0.8rem;
+}
+
+.identity-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.edit-profile-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    background: var(--blue);
+    color: #ffffff;
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, transform 0.1s ease;
     white-space: nowrap;
 }
 
-.logout-btn:hover {
-    background-color: hsl(0, 0%, 96%);
+.edit-profile-btn:hover {
+    background-color: hsl(212, 100%, 38%);
 }
 
-/* 在线时长统计卡片 */
-.stat-card {
-    display: flex;
-    align-items: center;
-    gap: 20px;
+.edit-profile-btn:active {
+    transform: scale(0.96);
 }
 
-.stat-icon {
-    font-size: 2.5rem;
-    width: 72px;
-    height: 72px;
-    border-radius: 18px;
-    background: hsl(207, 60%, 94%);
+.edit-profile-btn i {
+    font-size: 0.78rem;
+}
+
+.logout-link {
+    border: none;
+    background: none;
+    padding: 4px 2px;
+    color: var(--weak-color);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: color 0.2s ease;
+    white-space: nowrap;
+}
+
+.logout-link:hover {
+    color: var(--icon-color);
+    text-decoration: underline;
+}
+
+/* ---------- 2. 统计卡片 ---------- */
+.stats-card {
+    padding: 4px 0;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr 1.3fr 1fr;
+}
+
+.stat-cell {
+    padding: 22px 20px;
+    border-left: 1px solid var(--divider-color);
+    min-width: 0;
+    transition: background-color 0.2s ease;
+}
+
+.stat-cell:hover {
+    background-color: hsl(220, 30%, 98.5%);
+}
+
+.stat-cell:first-child {
+    border-left: none;
+}
+
+@media (max-width: 700px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .stat-cell:nth-child(2n+1) {
+        border-left: none;
+    }
+    .stat-cell:nth-child(n+3) {
+        border-top: 1px solid var(--divider-color);
+    }
+}
+
+@media (max-width: 420px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    .stat-cell {
+        border-left: none !important;
+    }
+    .stat-cell:not(:first-child) {
+        border-top: 1px solid var(--divider-color) !important;
+    }
+}
+
+.stat-cell-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    font-size: 1rem;
+    margin-bottom: 10px;
 }
 
-.stat-label {
+.stat-icon-time {
+    background: hsl(212, 90%, 94%);
+    color: hsl(212, 80%, 45%);
+}
+
+.stat-icon-streak {
+    background: hsl(24, 90%, 94%);
+    color: hsl(24, 85%, 48%);
+}
+
+.stat-icon-rank {
+    background: hsl(270, 60%, 95%);
+    color: hsl(270, 55%, 52%);
+}
+
+.stat-cell-label {
     margin: 0 0 4px;
     color: var(--weak-color);
-    font-size: 0.9rem;
+    font-size: 0.76rem;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
-.stat-value {
+.stat-cell-value {
     margin: 0;
-    font-size: 2.2rem;
-    font-weight: 700;
+    font-size: 1.7rem;
+    font-weight: 800;
+    color: var(--icon-color);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Total Time Studied 是主指标，字号明显更大更突出 */
+.stat-cell-value-hero {
+    font-size: 2.4rem;
     color: var(--blue);
 }
 
-/* 预留的未来功能板块 */
-.coming-soon-card h3 {
-    margin: 0 0 8px;
-    font-size: 1.1rem;
-}
-
-.coming-soon-text {
-    margin: 0;
+.stat-cell-value-muted {
+    font-size: 1.2rem;
+    font-weight: 700;
     color: var(--weak-color);
-    font-style: italic;
 }
 
-/* 未登录状态 */
+.stat-cell-hint {
+    margin: 6px 0 0;
+    font-size: 0.74rem;
+    color: var(--weak-color);
+    line-height: 1.4;
+}
+
+/* Practice Progress 用圆环替代原来的直线进度条，信息层级更丰富 */
+.stat-cell-ring {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.progress-ring-wrap {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+}
+
+.progress-ring {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.progress-ring-track {
+    fill: none;
+    stroke: hsl(0, 0%, 92%);
+    stroke-width: 8;
+}
+
+.progress-ring-fill {
+    fill: none;
+    stroke: hsl(212, 90%, 55%);
+    stroke-width: 8;
+    stroke-linecap: round;
+    stroke-dasharray: 213.6;
+    stroke-dashoffset: 213.6; /* 0% 进度：整圈都是 dashoffset，视觉上是空的 */
+    transition: stroke-dashoffset 0.5s ease;
+}
+
+.progress-ring-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--icon-color);
+}
+
+.stat-cell-ring-text {
+    min-width: 0;
+}
+
+/* ---------- 3. Weekly Activity ---------- */
+.weekly-card {
+    padding: 22px 28px 24px;
+}
+
+.weekly-header {
+    margin-bottom: 14px;
+}
+
+.weekly-chart {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    height: 96px;
+}
+
+.weekly-bar-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    height: 100%;
+}
+
+/* 每一栏的"轨道"：固定高度的浅灰底槽，哪怕当天是 0 也能看到一条完整的柱子外框，
+   视觉上更像一张真正的图表，而不是几条悬空的短线 */
+.weekly-bar-track {
+    width: 100%;
+    max-width: 30px;
+    height: 72px;
+    border-radius: 6px;
+    background: hsl(220, 25%, 96%);
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+}
+
+.weekly-bar {
+    width: 100%;
+    height: 0px;
+    border-radius: 6px 6px 2px 2px;
+    transition: height 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.15s ease, box-shadow 0.15s ease;
+    cursor: default;
+}
+
+/* 每一栏依次错开渐入，柱子像是"长出来"的，而不是数据一到就瞬间跳变 */
+.weekly-bar-col:nth-child(1) .weekly-bar { transition-delay: 0s; }
+.weekly-bar-col:nth-child(2) .weekly-bar { transition-delay: 0.04s; }
+.weekly-bar-col:nth-child(3) .weekly-bar { transition-delay: 0.08s; }
+.weekly-bar-col:nth-child(4) .weekly-bar { transition-delay: 0.12s; }
+.weekly-bar-col:nth-child(5) .weekly-bar { transition-delay: 0.16s; }
+.weekly-bar-col:nth-child(6) .weekly-bar { transition-delay: 0.2s; }
+.weekly-bar-col:nth-child(7) .weekly-bar { transition-delay: 0.24s; }
+
+/* 每天固定一个颜色，周一到周日 */
+.weekly-bar-monday {
+    background: #f0f7ff;
+}
+.weekly-bar-tuesday {
+    background: #dbeafe;
+}
+.weekly-bar-wednesday {
+    background: #bfdbfe;
+}
+.weekly-bar-thursday {
+    background: #93c5fd;
+}
+.weekly-bar-friday {
+    background: #60a5fa;
+}
+.weekly-bar-saturday {
+    background: #818cf8;
+}
+.weekly-bar-sunday {
+    background: #a5b4fc;
+}
+
+/* hover 反馈：轨道内的柱子轻微放大 + 发光，鼠标划过明显有反应，不是死板的静态图表 */
+.weekly-bar-track:hover .weekly-bar {
+    transform: scaleX(1.15);
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.weekly-day {
+    font-size: 0.72rem;
+    color: var(--weak-color);
+    font-weight: 600;
+}
+
+/* 底部一句话，根据这周真实学习时长动态生成，不是写死的占位文案 */
+.weekly-message {
+    margin: 12px 0 0;
+    font-size: 0.82rem;
+    color: var(--weak-color);
+    text-align: center;
+}
+
+/* ---------- 4. Badges ---------- */
+.badges-card {
+    padding: 22px 28px 26px;
+}
+
+.badges-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-top: 16px;
+}
+
+@media (max-width: 500px) {
+    .badges-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.badge-item {
+    text-align: center;
+    padding: 16px 10px;
+    border-radius: 12px;
+    background: hsl(0, 0%, 98%);
+    transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.badge-item:hover {
+    background: hsl(212, 60%, 97%);
+    transform: translateY(-2px);
+}
+
+.badge-icon {
+    width: 44px;
+    height: 44px;
+    margin: 0 auto 8px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    background: hsl(0, 0%, 93%);
+    color: hsl(0, 0%, 65%);
+}
+
+.badge-locked .badge-icon {
+    opacity: 0.85;
+}
+
+.badge-name {
+    margin: 0 0 2px;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.badge-desc {
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--weak-color);
+}
+
+/* ---------- 5. Recent Activity ---------- */
+.activity-card {
+    padding: 24px 28px 28px;
+}
+
+.section-title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.activity-empty {
+    text-align: center;
+    padding: 12px 16px 8px;
+}
+
+.activity-illustration {
+    width: 140px;
+    height: auto;
+    margin-bottom: 8px;
+}
+
+.activity-empty-title {
+    margin: 0 0 4px;
+    font-weight: 600;
+}
+
+.activity-empty-subtext {
+    margin: 0 0 18px;
+    color: var(--weak-color);
+    font-size: 0.85rem;
+}
+
+.start-practice-btn {
+    display: inline-block;
+    padding: 9px 22px;
+    background: var(--blue);
+    color: white;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.88rem;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.start-practice-btn:hover {
+    background-color: hsl(212, 100%, 38%);
+}
+
+.start-practice-btn:active {
+    transform: scale(0.96);
+}
+
+/* ---------- 未登录状态 ---------- */
 #not-logged-in-state {
     text-align: center;
     padding: 56px 32px;
@@ -185,4 +667,36 @@ body {
 
 .back-home-btn:hover {
     background-color: hsl(212, 100%, 34%);
+}
+
+/* Edit Profile 点击后的小提示条 */
+.profile-toast {
+    position: fixed;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ffffff;
+    border-left: 6px solid var(--blue);
+    border-radius: 12px;
+    padding: 14px 28px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--icon-color);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+    z-index: 2500;
+    animation: profileToastIn 0.35s ease;
+}
+
+.profile-toast.profile-toast-hide {
+    animation: profileToastOut 0.35s ease forwards;
+}
+
+@keyframes profileToastIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(-16px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes profileToastOut {
+    from { opacity: 1; transform: translateX(-50%) translateY(0); }
+    to { opacity: 0; transform: translateX(-50%) translateY(-16px); }
 }

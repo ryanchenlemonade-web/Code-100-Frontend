@@ -23,17 +23,20 @@ body{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background-color: var(--background-color);
     min-width: 828px;
-    min-height: 1vh;
-    margin-bottom: 170px;  /* 底部留白 */
+    min-height: 100vh;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
     background: linear-gradient(135deg, hsl(207, 60%, 96%), hsl(260, 50%, 96%));
 }
 
 #header-wrapper {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 16px;
+    gap: 8px;
+    padding-top: 32px;
+    margin-bottom: 24px;
 }
 
 .title-row {
@@ -60,6 +63,7 @@ body{
     text-align: center;
     font-size: 3rem;
     color: black;
+    margin: 0;
 }
 
 
@@ -70,14 +74,25 @@ body{
     }
 }
 
-#slogan {
-    text-align: center;
-    width: 100%;  
+.back-home-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--blue);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    transition: background-color 0.2s ease;
+}
+
+.back-home-link:hover {
+    background-color: hsl(207, 70%, 94%);
+}
+
+.back-home-arrow {
     font-size: 1rem;
-    color: var(--weak-color);
-    margin-top: -40px;
-    padding-bottom: 7px;
-    font-style: italic;
 }
 
 
@@ -145,6 +160,7 @@ body{
     display: flex;
     align-items: flex-start;   /* sidebar 和 content 顶部对齐 */
     gap: 24px;                  /* 两者之间的间距 */
+    flex: 1 0 auto;             /* 撑满剩余空间，把 footer 推到窗口底部（内容多的时候会被正常推下去，需要滚动） */
 }
 
 
@@ -296,9 +312,7 @@ body.exam-focus-mode .content {
 
 /* footer 同样跟着一起收起；加载完成后由 JS 加上 .footer-loaded 才淡入显示，
    考试专注模式再淡出隐藏。这里统一用 transition（不用 animation），
-   避免两者作用在同一个属性上互相覆盖导致过渡失效。
-   注意：这里不能对 #footer-container 加 transform，因为 footer.html 自带的
-   footer 元素是 position:fixed，祖先一旦有 transform 就会劫持它的定位基准 */
+   避免两者作用在同一个属性上互相覆盖导致过渡失效。 */
 #footer-container {
     overflow: hidden;
     max-height: 400px;   /* 数值只要大于 footer 实际高度即可 */

@@ -192,6 +192,18 @@ function formatMMSS(totalSeconds) {
 // 获取 Examination（原 Testing）模式题目：header（标题/计时器/按钮）已经是骨架里现成的静态结构，
 // 这里负责找到这些元素、重置初始状态、（第一次进入时）绑定事件，再去后端拉题目数据填进 #testing-questions
 // paperTitle：banner 左边显示的考卷名称，例如 "Test 1 2020"
+// 交卷完成的时候记一笔"这个用户完成了这张卷子"，给 Profile 页面的 Practice Progress 用。
+// 没登录的话直接跳过，不影响正常交卷流程（考试功能本身不强制登录）。
+function recordExamCompletion(paperId) {
+    const token = localStorage.getItem('csci1100_auth_token');
+    if (!token || !paperId) return;
+
+    fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/complete`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+    }).catch(error => console.error('Failed to record exam completion:', error));
+}
+
 function loadTestingQuestions(paperId, paperTitle) {
     const header = document.getElementById('testing-header');
     const headerTitle = header ? header.querySelector('h2') : null;
@@ -265,6 +277,8 @@ function loadTestingQuestions(paperId, paperTitle) {
 
         submitBtn.addEventListener('click', () => {
             stopTestingTimer();
+
+            recordExamCompletion(header.dataset.currentPaperId);
 
             const examStartTime = countdownEndTime - COUNTDOWN_TOTAL_SECONDS * 1000;
             const totalElapsedSeconds = Math.round((Date.now() - examStartTime) / 1000);

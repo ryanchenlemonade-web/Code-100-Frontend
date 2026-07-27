@@ -1,5 +1,3 @@
-
-
 :root{
     --bar-hover-color: hsl(0, 0%, 90%);
     --background-color:  hsl(0, 0%, 95%);
@@ -246,5 +244,13 @@ b{
     font-size: 1.3rem;
 }
 
-
-
+/* 只有首页需要 footer 一直固定在屏幕最底部（不管滚动到哪都看得见）。
+   其他页面用的是 footer.html 默认的正常文档流样式（滚到最底部才看得到）。
+   这里用 #footer-container footer 两层选择器，保证优先级比 footer.html 自己内嵌的
+   <style> 高，不用管两边谁先插入 DOM 都能生效。 */
+#footer-container footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+}

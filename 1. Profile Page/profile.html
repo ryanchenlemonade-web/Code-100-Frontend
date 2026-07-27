@@ -6,12 +6,13 @@
     <title>Profile — Code 100</title>
     <link rel="stylesheet" href="profile.css">
     <link rel="icon" type="image/png" href="../0. images/Code 100.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body>
 
     <div id="header-wrapper">
-        <a id="header" href="../1. Home Page/home_page.html">
-            <h1 id="web-header">Code 100</h1>
+        <a href="../1. Home Page/home_page.html" class="back-home-link">
+            <span class="back-home-arrow">&larr;</span> Back to Home
         </a>
     </div>
 
@@ -28,34 +29,141 @@
         <!-- 已登录状态 -->
         <div id="profile-content" style="display: none;">
 
-            <!-- 用户信息卡片 -->
-            <div class="profile-card profile-header-card">
-                <div class="avatar-circle" id="avatar-initial">?</div>
-                <div class="profile-header-text">
-                    <h1 id="profile-username">—</h1>
-                    <p id="profile-member-since">Member since —</p>
+            <!-- 1. 身份卡片：横幅 + 头像 + 用户名 + 操作按钮 -->
+            <div class="profile-card identity-card">
+                <div class="profile-banner">
+                    <div class="banner-brand">
+                        <img class="banner-logo" src="../0. images/Code 100.png" alt="">
+                        <span class="banner-brand-text">Code 100</span>
+                    </div>
                 </div>
-                <button id="logout-btn" class="logout-btn">Log out</button>
-            </div>
+                <div class="identity-body">
+                    <div class="avatar-wrap">
+                        <div class="avatar-circle" id="avatar-initial">?</div>
+                        <span class="avatar-online-dot" title="Online now"></span>
+                    </div>
 
-            <!-- 在线时长统计 -->
-            <div class="profile-card stat-card">
-                <div class="stat-icon">⏱️</div>
-                <div class="stat-text">
-                    <p class="stat-label">Total Time Studied</p>
-                    <p class="stat-value" id="online-time-value">0m</p>
+                    <div class="identity-main">
+                        <div class="identity-text">
+                            <div class="identity-name-row">
+                                <h1 id="profile-username">—</h1>
+                                <span class="member-badge" title="Code 100 Member"><i class="fa-solid fa-circle-check"></i></span>
+                            </div>
+                            <p class="profile-role">Code 100 Member</p>
+                            <p id="profile-member-since" class="profile-since">Member since —</p>
+                        </div>
+                        <div class="identity-actions">
+                            <button id="edit-profile-btn" class="edit-profile-btn">
+                                <i class="fa-solid fa-pen"></i> Edit Profile
+                            </button>
+                            <button id="logout-btn" class="logout-link">Log out</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- 预留板块：未来功能 -->
-            <div class="profile-card coming-soon-card">
-                <h3>Practice Progress</h3>
-                <p class="coming-soon-text">Coming Soon!!</p>
+            <!-- 2. 统计卡片：Total Time Studied 作为主指标放大，其余三项次一级 -->
+            <div class="profile-card stats-card">
+                <div class="stats-grid">
+
+                    <div class="stat-cell stat-cell-hero">
+                        <div class="stat-cell-icon stat-icon-time"><i class="fa-solid fa-stopwatch"></i></div>
+                        <p class="stat-cell-label">Total Time Studied</p>
+                        <p class="stat-cell-value stat-cell-value-hero" id="online-time-value">0m</p>
+                    </div>
+
+                    <div class="stat-cell">
+                        <div class="stat-cell-icon stat-icon-streak"><i class="fa-solid fa-fire"></i></div>
+                        <p class="stat-cell-label">Day Streak</p>
+                        <p class="stat-cell-value" id="streak-value">0</p>
+                        <p class="stat-cell-hint">Practice today to start your streak</p>
+                    </div>
+
+                    <div class="stat-cell stat-cell-ring">
+                        <div class="progress-ring-wrap">
+                            <svg class="progress-ring" viewBox="0 0 80 80">
+                                <circle class="progress-ring-track" cx="40" cy="40" r="34"></circle>
+                                <circle class="progress-ring-fill" id="practice-progress-ring" cx="40" cy="40" r="34"></circle>
+                            </svg>
+                            <span class="progress-ring-text" id="practice-progress-percent">0%</span>
+                        </div>
+                        <div class="stat-cell-ring-text">
+                            <p class="stat-cell-label">Practice Progress</p>
+                            <p class="stat-cell-hint">0 of 0 tests &mdash; start practicing!</p>
+                        </div>
+                    </div>
+
+                    <div class="stat-cell">
+                        <div class="stat-cell-icon stat-icon-rank"><i class="fa-solid fa-ranking-star"></i></div>
+                        <p class="stat-cell-label">Leaderboard Rank</p>
+                        <p class="stat-cell-value stat-cell-value-muted">Unranked</p>
+                        <p class="stat-cell-hint">Complete practice questions to get ranked</p>
+                    </div>
+
+                </div>
             </div>
 
-            <div class="profile-card coming-soon-card">
-                <h3>Leaderboard Rank</h3>
-                <p class="coming-soon-text">Coming Soon!!</p>
+            <!-- 3. 每周活跃度：目前没有按天记录的数据，诚实地展示成"框架已就绪、数据待接入"的骨架状态 -->
+            <div class="profile-card weekly-card">
+                <div class="weekly-header">
+                    <h2 class="section-title">Weekly Activity</h2>
+                </div>
+                <div class="weekly-chart">
+                    <div class="weekly-bar-col"><div class="weekly-bar-track"><div class="weekly-bar"></div></div><span class="weekly-day">Mon</span></div>
+                    <div class="weekly-bar-col"><div class="weekly-bar-track"><div class="weekly-bar"></div></div><span class="weekly-day">Tue</span></div>
+                    <div class="weekly-bar-col"><div class="weekly-bar-track"><div class="weekly-bar"></div></div><span class="weekly-day">Wed</span></div>
+                    <div class="weekly-bar-col"><div class="weekly-bar-track"><div class="weekly-bar"></div></div><span class="weekly-day">Thu</span></div>
+                    <div class="weekly-bar-col"><div class="weekly-bar-track"><div class="weekly-bar"></div></div><span class="weekly-day">Fri</span></div>
+                    <div class="weekly-bar-col"><div class="weekly-bar-track"><div class="weekly-bar"></div></div><span class="weekly-day">Sat</span></div>
+                    <div class="weekly-bar-col"><div class="weekly-bar-track"><div class="weekly-bar"></div></div><span class="weekly-day">Sun</span></div>
+                </div>
+                <p class="weekly-message" id="weekly-message">Start practicing to fill in your week.</p>
+            </div>
+
+            <!-- 4. 徽章：同样诚实展示成未解锁状态，不编造已获得的成就 -->
+            <div class="profile-card badges-card">
+                <h2 class="section-title">Badges</h2>
+                <div class="badges-row">
+                    <div class="badge-item badge-locked">
+                        <div class="badge-icon"><i class="fa-solid fa-seedling"></i></div>
+                        <p class="badge-name">First Steps</p>
+                        <p class="badge-desc">Complete 1 question</p>
+                    </div>
+                    <div class="badge-item badge-locked">
+                        <div class="badge-icon"><i class="fa-solid fa-fire"></i></div>
+                        <p class="badge-name">On Fire</p>
+                        <p class="badge-desc">3-day streak</p>
+                    </div>
+                    <div class="badge-item badge-locked">
+                        <div class="badge-icon"><i class="fa-solid fa-medal"></i></div>
+                        <p class="badge-name">Test Ace</p>
+                        <p class="badge-desc">Finish a full test</p>
+                    </div>
+                    <div class="badge-item badge-locked">
+                        <div class="badge-icon"><i class="fa-solid fa-crown"></i></div>
+                        <p class="badge-name">Top 10</p>
+                        <p class="badge-desc">Reach the leaderboard</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. Recent Activity 卡片：带一个简单的插画 -->
+            <div class="profile-card activity-card">
+                <h2 class="section-title">Recent Activity</h2>
+                <div class="activity-empty">
+                    <svg class="activity-illustration" viewBox="0 0 160 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="20" y="55" width="18" height="30" rx="3" fill="#dbeafe"/>
+                        <rect x="45" y="40" width="18" height="45" rx="3" fill="#bfdbfe"/>
+                        <rect x="70" y="60" width="18" height="25" rx="3" fill="#dbeafe"/>
+                        <rect x="95" y="30" width="18" height="55" rx="3" fill="#93c5fd"/>
+                        <rect x="120" y="48" width="18" height="37" rx="3" fill="#bfdbfe"/>
+                        <circle cx="129" cy="22" r="10" fill="#3b82f6" opacity="0.15"/>
+                        <path d="M124 22l3 3 6-6" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <p class="activity-empty-title">No activity yet</p>
+                    <p class="activity-empty-subtext">Once you start practicing, your recent sessions will show up here.</p>
+                    <a href="../1. Home Page/home_page.html" class="start-practice-btn">Start Practicing</a>
+                </div>
             </div>
 
         </div>
