@@ -188,6 +188,13 @@ items.forEach(item => {
             void target.offsetWidth;   // 强制重排，这一行不能删
             target.style.animation = 'contentFadeIn 0.9s ease forwards';
         }
+
+        // 切到 Revision 标签页时，实时拉一次这个用户标过重点的题目（不缓存，
+        // 保证跟 Practice 那边刚标/取消的星标状态是同步的），顺手初始化 Crib Sheet
+        if (this.id === 'revision') {
+            loadRevisionQuestions();
+            initCribSheet();
+        }
     });
 });
 

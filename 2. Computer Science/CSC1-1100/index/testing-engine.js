@@ -53,11 +53,33 @@ function formatQuestionType(rawCategory) {
     return rawCategory.replace(/_/g, '-').toLowerCase();
 }
 
+// 记录当前登录用户标过重点的题目 id（进 Practice 页面时拉一次，用来决定每道题的星标要不要默认点亮）
+let starredQuestionIds = new Set();
+
+// 调用后端切换某道题的星标状态，返回最新状态（true=已标星）
+function toggleQuestionStar(questionId) {
+    const token = getToken();
+    if (!token) return Promise.resolve(null);
+
+    return fetch(`${APP_API_BASE}/api/progress/questions/${questionId}/star`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => data ? data.starred : null)
+        .catch(error => {
+            console.error('Failed to toggle star:', error);
+            return null;
+        });
+}
+
 // 构建单道题目的 DOM 结构（题号 + 题干代码块），样式全部交给 CSS 里的 class 处理
 // options.displayNumber 有值时，题号直接显示这个序号（Practice 模式跨年份混合展示时，
 // 用它做纯粹的排序序号，而不是这道题在原本那张卷子里的题号，因为不同年份的题号会重复，容易看混）
 // options.showYear = true 时，会在题号旁边加一个"年份 (原始题号)"的标签，比如 "2020 (1a)"
 // options.showType = true 时，会再加一个题型标签（Practice 模式选 "All" 时，混合了多种题型，用来标注每道题是什么类型）
+// options.showStar = true 时，会在题号那一行右边加一个可以点的星标（Revision 联动用，标了星的题目会出现在 Revision 页面）
+// options.onUnstar 是个回调，只在 Revision 页面用——取消星标之后，把这道题从当前列表里移除
 function buildQuestionBlock(question, options = {}) {
     const wrapper = document.createElement('div');
     wrapper.className = 'question-block';
@@ -87,6 +109,43 @@ function buildQuestionBlock(question, options = {}) {
         labelRow.appendChild(typeTag);
     }
 
+    if (options.showStar) {
+        const starBtn = document.createElement('button');
+        starBtn.type = 'button';
+        starBtn.className = 'question-star-btn';
+        const isStarred = starredQuestionIds.has(question.id);
+        starBtn.classList.toggle('starred', isStarred);
+        starBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
+        starBtn.title = isStarred ? 'Remove from Revision' : 'Mark as important \u2014 add to Revision';
+
+        starBtn.addEventListener('click', () => {
+            if (!getToken()) {
+                starBtn.title = 'Log in to save marked questions';
+                return;
+            }
+            starBtn.disabled = true;
+            toggleQuestionStar(question.id).then(nowStarred => {
+                starBtn.disabled = false;
+                if (nowStarred === null) return; // 请求失败/没登录，保持原状不动
+
+                if (nowStarred) {
+                    starredQuestionIds.add(question.id);
+                } else {
+                    starredQuestionIds.delete(question.id);
+                }
+                starBtn.classList.toggle('starred', nowStarred);
+                starBtn.title = nowStarred ? 'Remove from Revision' : 'Mark as important \u2014 add to Revision';
+
+                // Revision 页面里取消星标时，直接把这道题从列表里移除，不用整页重新拉一次数据
+                if (!nowStarred && options.onUnstar) {
+                    options.onUnstar(wrapper);
+                }
+            });
+        });
+
+        labelRow.appendChild(starBtn);
+    }
+
     wrapper.appendChild(labelRow);
 
     const questionPre = document.createElement('pre');
@@ -110,53 +169,76 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
         params.set('questionCategory', questionCategory);
     }
 
-    fetch(`${APP_API_BASE}/api/questions/practice-by-category?${params.toString()}`)
-        .then(response => response.json())
-        .then(data => {
-            questionsWrap.innerHTML = '';   // 清掉加载提示，再填真正的题目
+    // 先把这个用户标过星的题目 id 拉回来（没登录就跳过，星标按钮还是会显示，只是默认都是空心状态），
+    // 这样题目渲染出来的时候，已经标过重点的题就能一开始就显示实心星标，不用等用户自己点一遍才知道
+    ensureStarredQuestionIdsLoaded().finally(() => {
+        fetch(`${APP_API_BASE}/api/questions/practice-by-category?${params.toString()}`)
+            .then(response => response.json())
+            .then(data => {
+                questionsWrap.innerHTML = '';   // 清掉加载提示，再填真正的题目
 
-            // 只有选 "All" 时（没有指定具体题型）才需要标注每道题的题型，
-            // 如果已经按某个题型筛选了，所有题都是同一类型，标了也是多余信息
-            const showType = !questionCategory;
+                // 只有选 "All" 时（没有指定具体题型）才需要标注每道题的题型，
+                // 如果已经按某个题型筛选了，所有题都是同一类型，标了也是多余信息
+                const showType = !questionCategory;
 
-            // 后端没有保证返回顺序，这里先按年份从新到旧、再按原始题号排一下，
-            // 这样左边的排序序号（1, 2, 3...）才是按固定顺序来的，不是随机的
-            data.sort((a, b) => {
-                if (b.paper_year !== a.paper_year) return b.paper_year - a.paper_year;
-                return (a.question_number ?? 0) - (b.question_number ?? 0);
+                // 后端没有保证返回顺序，这里先按年份从新到旧、再按原始题号排一下，
+                // 这样左边的排序序号（1, 2, 3...）才是按固定顺序来的，不是随机的
+                data.sort((a, b) => {
+                    if (b.paper_year !== a.paper_year) return b.paper_year - a.paper_year;
+                    return (a.question_number ?? 0) - (b.question_number ?? 0);
+                });
+
+                data.forEach((question, index) => {
+                    const wrapper = buildQuestionBlock(question, { showYear: true, showType, displayNumber: index + 1, showStar: true });
+
+                    if (question.question_solution) {
+                        const toggleBtn = document.createElement('button');
+                        toggleBtn.textContent = 'Show Solution';
+                        toggleBtn.className = 'show-answer-btn';
+
+                        const solutionPre = document.createElement('pre');
+                        solutionPre.className = 'answer-code';
+                        solutionPre.textContent = question.question_solution;
+
+                        toggleBtn.addEventListener('click', () => {
+                            const isHidden = !solutionPre.classList.contains('show');
+                            solutionPre.classList.toggle('show', isHidden);
+                            toggleBtn.textContent = isHidden ? 'Hide Solution' : 'Show Solution';
+                        });
+
+                        wrapper.appendChild(toggleBtn);
+                        wrapper.appendChild(solutionPre);
+                    }
+
+                    questionsWrap.appendChild(wrapper);
+                });
+
+                triggerFadeIn(questionsWrap);
+            })
+            .catch(error => {
+                console.error('Failed to Obtain Practice Questions:', error);
+                showQuestionsError(questionsWrap);
             });
+    });
+}
 
-            data.forEach((question, index) => {
-                const wrapper = buildQuestionBlock(question, { showYear: true, showType, displayNumber: index + 1 });
+// 拉一次"我标过星的题目 id 有哪些"，缓存在 starredQuestionIds 里，避免每次切换 Test/题型筛选都重新请求
+let starredIdsLoadPromise = null;
+function ensureStarredQuestionIdsLoaded() {
+    const token = getToken();
+    if (!token) return Promise.resolve();
+    if (starredIdsLoadPromise) return starredIdsLoadPromise;
 
-                if (question.question_solution) {
-                    const toggleBtn = document.createElement('button');
-                    toggleBtn.textContent = 'Show Solution';
-                    toggleBtn.className = 'show-answer-btn';
-
-                    const solutionPre = document.createElement('pre');
-                    solutionPre.className = 'answer-code';
-                    solutionPre.textContent = question.question_solution;
-
-                    toggleBtn.addEventListener('click', () => {
-                        const isHidden = !solutionPre.classList.contains('show');
-                        solutionPre.classList.toggle('show', isHidden);
-                        toggleBtn.textContent = isHidden ? 'Hide Solution' : 'Show Solution';
-                    });
-
-                    wrapper.appendChild(toggleBtn);
-                    wrapper.appendChild(solutionPre);
-                }
-
-                questionsWrap.appendChild(wrapper);
-            });
-
-            triggerFadeIn(questionsWrap);
+    starredIdsLoadPromise = fetch(`${APP_API_BASE}/api/progress/starred-questions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.ok ? res.json() : [])
+        .then(list => {
+            starredQuestionIds = new Set(list.map(q => q.id));
         })
-        .catch(error => {
-            console.error('Failed to Obtain Practice Questions:', error);
-            showQuestionsError(questionsWrap);
-        });
+        .catch(error => console.error('Failed to load starred question ids:', error));
+
+    return starredIdsLoadPromise;
 }
 
 // 绑定 Practice 题型筛选下拉框的变化事件（每次切换 Test 分类、重新生成骨架后都要重新绑定，
@@ -428,4 +510,162 @@ function stopTestingTimer() {
         clearInterval(testingTimerInterval);
         testingTimerInterval = null;
     }
+}
+
+// ---------- Revision 页面 板块一：展示这个用户在 Practice 里标过重点的所有题目 ----------
+// 每次切到 Revision 标签页都重新拉一次（不缓存），保证跟 Practice 那边的星标状态是最新的
+function loadRevisionQuestions() {
+    const container = document.getElementById('marked-questions-container');
+    if (!container) return;
+
+    const token = getToken();
+    if (!token) {
+        container.innerHTML = '<div class="revision-empty">' +
+            '<div class="revision-empty-icon"><i class="fa-regular fa-star"></i></div>' +
+            '<p class="revision-empty-title">Log in to use Revision</p>' +
+            '<p class="revision-empty-subtext">Mark questions as important in Practice, and they\u2019ll show up here for quick review.</p>' +
+            '</div>';
+        return;
+    }
+
+    showQuestionsLoading(container, 'Loading your marked questions...');
+
+    fetch(`${APP_API_BASE}/api/progress/starred-questions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.json())
+        .then(data => {
+            container.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="revision-empty">' +
+                    '<div class="revision-empty-icon"><i class="fa-regular fa-star"></i></div>' +
+                    '<p class="revision-empty-title">No marked questions yet</p>' +
+                    '<p class="revision-empty-subtext">Go to Practice and click the star on any question to add it here.</p>' +
+                    '</div>';
+                return;
+            }
+
+            // 保持跟 starredQuestionIds 同步，这样切回 Practice 的时候星标状态还是对的
+            starredQuestionIds = new Set(data.map(q => q.id));
+
+            data.sort((a, b) => {
+                if (b.paper_year !== a.paper_year) return b.paper_year - a.paper_year;
+                return (a.question_number ?? 0) - (b.question_number ?? 0);
+            });
+
+            data.forEach((question, index) => {
+                const wrapper = buildQuestionBlock(question, {
+                    showYear: true,
+                    showType: true,
+                    displayNumber: index + 1,
+                    showStar: true,
+                    // 在 Revision 页面取消星标，直接把这道题从当前列表移除，不用整页重新拉一次
+                    onUnstar: (questionEl) => {
+                        questionEl.remove();
+                        if (container.querySelectorAll('.question-block').length === 0) {
+                            loadRevisionQuestions(); // 全部取消了，刷新一下显示空状态
+                        }
+                    }
+                });
+
+                if (question.question_solution) {
+                    const toggleBtn = document.createElement('button');
+                    toggleBtn.textContent = 'Show Solution';
+                    toggleBtn.className = 'show-answer-btn';
+
+                    const solutionPre = document.createElement('pre');
+                    solutionPre.className = 'answer-code';
+                    solutionPre.textContent = question.question_solution;
+
+                    toggleBtn.addEventListener('click', () => {
+                        const isHidden = !solutionPre.classList.contains('show');
+                        solutionPre.classList.toggle('show', isHidden);
+                        toggleBtn.textContent = isHidden ? 'Hide Solution' : 'Show Solution';
+                    });
+
+                    wrapper.appendChild(toggleBtn);
+                    wrapper.appendChild(solutionPre);
+                }
+
+                container.appendChild(wrapper);
+            });
+
+            triggerFadeIn(container);
+        })
+        .catch(error => {
+            console.error('Failed to load revision questions:', error);
+            showQuestionsError(container, 'Failed to load your marked questions. Please try refreshing the page.');
+        });
+}
+
+// ---------- Revision 页面 板块二：自己写的 Crib Sheet（纯文本笔记，手动 Save） ----------
+// 每次切到 Revision 标签页都会调用；Test 分类切换时骨架会整个重新注入，
+// 所以用 dataset 标记一下，避免同一个按钮被重复绑定监听器（不然点一次 Save 会触发好几次请求）
+function initCribSheet() {
+    const textarea = document.getElementById('crib-sheet-textarea');
+    const saveBtn = document.getElementById('crib-sheet-save-btn');
+    const statusEl = document.getElementById('crib-sheet-status');
+    if (!textarea || !saveBtn) return;
+
+    const token = getToken();
+    if (!token) {
+        textarea.value = '';
+        textarea.disabled = true;
+        textarea.placeholder = 'Log in to write and save your crib sheet.';
+        saveBtn.disabled = true;
+        return;
+    }
+
+    textarea.disabled = false;
+    saveBtn.disabled = false;
+
+    // 拉一次已经保存过的内容，填进文本框
+    fetch(`${APP_API_BASE}/api/progress/crib-sheet`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+            if (data) textarea.value = data.content || '';
+        })
+        .catch(error => console.error('Failed to load crib sheet:', error));
+
+    if (saveBtn.dataset.listenerAttached) return; // 已经绑过了，不重复绑
+    saveBtn.dataset.listenerAttached = 'true';
+
+    saveBtn.addEventListener('click', () => {
+        const currentToken = getToken();
+        if (!currentToken) return;
+
+        saveBtn.disabled = true;
+        const originalText = saveBtn.textContent;
+        saveBtn.textContent = 'Saving...';
+        if (statusEl) statusEl.textContent = '';
+
+        fetch(`${APP_API_BASE}/api/progress/crib-sheet`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${currentToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ content: textarea.value })
+        })
+            .then(res => res.ok ? res.json() : Promise.reject(new Error('Save failed')))
+            .then(() => {
+                if (statusEl) {
+                    statusEl.textContent = 'Saved';
+                    setTimeout(() => {
+                        if (statusEl.textContent === 'Saved') statusEl.textContent = '';
+                    }, 3000);
+                }
+            })
+            .catch(error => {
+                console.error('Failed to save crib sheet:', error);
+                if (statusEl) statusEl.textContent = 'Failed to save \u2014 please try again.';
+            })
+            .finally(() => {
+                saveBtn.disabled = false;
+                saveBtn.textContent = originalText;
+            });
+    });
 }

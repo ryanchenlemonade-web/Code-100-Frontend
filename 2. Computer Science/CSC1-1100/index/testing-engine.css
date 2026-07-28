@@ -149,6 +149,133 @@
     font-weight: 600;
 }
 
+/* 星标按钮：紧跟在题型标签（比如 "full-program"）旁边，空心=没标，实心+黄色=已标（联动 Revision 页面） */
+.question-star-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.05rem;
+    color: hsl(0, 0%, 75%);
+    padding: 2px 4px;
+    transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.question-star-btn:hover {
+    color: hsl(45, 90%, 55%);
+    transform: scale(1.15);
+}
+
+.question-star-btn.starred {
+    color: hsl(45, 90%, 50%);
+}
+
+.question-star-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Revision 空状态（没标过任何题 / 没登录） */
+.revision-empty {
+    text-align: center;
+    padding: 56px 24px;
+    color: var(--weak-color, #666);
+}
+
+.revision-empty-icon {
+    font-size: 2rem;
+    margin-bottom: 14px;
+    color: hsl(45, 80%, 55%);
+}
+
+.revision-empty-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: #222;
+    margin: 0 0 6px;
+}
+
+.revision-empty-subtext {
+    margin: 0 auto;
+    font-size: 0.9rem;
+    max-width: 380px;
+    line-height: 1.5;
+}
+
+/* Revision 页面两个板块之间的分隔 */
+.revision-section {
+    margin-bottom: 48px;
+}
+
+.revision-section:last-child {
+    margin-bottom: 0;
+}
+
+.crib-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.crib-sheet-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.crib-sheet-status {
+    font-size: 0.85rem;
+    color: hsl(140, 50%, 38%);
+}
+
+.crib-sheet-save-btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 8px;
+    background: hsl(207, 70%, 50%);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.crib-sheet-save-btn:hover:not(:disabled) {
+    background: hsl(207, 70%, 42%);
+}
+
+.crib-sheet-save-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.crib-sheet-textarea {
+    width: 100%;
+    min-height: 260px;
+    margin-top: 14px;
+    padding: 16px;
+    border: 1px solid var(--divider-color, #ddd);
+    border-radius: 10px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: #222;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.crib-sheet-textarea:focus {
+    outline: none;
+    border-color: hsl(207, 70%, 55%);
+    box-shadow: 0 0 0 3px hsl(207, 70%, 92%);
+}
+
+.crib-sheet-textarea:disabled {
+    background: hsl(0, 0%, 96%);
+    color: var(--weak-color, #888);
+}
+
 .question-code,
 .answer-code {
     white-space: pre-wrap;
@@ -398,4 +525,4 @@
 #testing-back-to-top-btn {
     display: block;
     margin: 32px auto 48px;
-} 
+}
