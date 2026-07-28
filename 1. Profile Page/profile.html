@@ -79,26 +79,22 @@
                         <p class="stat-cell-hint">Practice today to start your streak</p>
                     </div>
 
-                    <div class="stat-cell stat-cell-ring">
-                        <div class="progress-ring-wrap">
-                            <svg class="progress-ring" viewBox="0 0 80 80">
-                                <circle class="progress-ring-track" cx="40" cy="40" r="34"></circle>
-                                <circle class="progress-ring-fill" id="practice-progress-ring" cx="40" cy="40" r="34"></circle>
-                            </svg>
-                            <span class="progress-ring-text" id="practice-progress-percent">0%</span>
+                    <div class="stat-cell">
+                        <div class="stat-cell-icon stat-icon-progress"><i class="fa-solid fa-chart-line"></i></div>
+                        <p class="stat-cell-label">Practice Progress</p>
+                        <p class="stat-cell-value" id="practice-progress-percent">0%</p>
+                        <div class="progress-track">
+                            <div class="progress-fill" id="practice-progress-fill" style="width: 0%;"></div>
                         </div>
-                        <div class="stat-cell-ring-text">
-                            <p class="stat-cell-label">Practice Progress</p>
-                            <p class="stat-cell-hint">0 of 0 tests &mdash; start practicing!</p>
-                        </div>
+                        <p class="stat-cell-hint" id="practice-progress-hint">0 of 0 tests &mdash; start practicing!</p>
                     </div>
 
-                    <div class="stat-cell">
+                    <a href="../1. Leaderboard Page/leaderboard.html" class="stat-cell stat-cell-link">
                         <div class="stat-cell-icon stat-icon-rank"><i class="fa-solid fa-ranking-star"></i></div>
                         <p class="stat-cell-label">Leaderboard Rank</p>
-                        <p class="stat-cell-value stat-cell-value-muted">Unranked</p>
-                        <p class="stat-cell-hint">Complete practice questions to get ranked</p>
-                    </div>
+                        <p class="stat-cell-value stat-cell-value-muted" id="leaderboard-rank-value">Unranked</p>
+                        <p class="stat-cell-hint" id="leaderboard-rank-hint">Complete practice questions to get ranked</p>
+                    </a>
 
                 </div>
             </div>

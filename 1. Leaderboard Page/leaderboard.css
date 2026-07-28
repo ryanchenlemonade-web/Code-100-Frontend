@@ -1,0 +1,524 @@
+/* leaderboard.css */
+
+:root {
+    --blue: #0066cc;
+    --blue-light: hsl(212, 100%, 96%);
+    --icon-color: hsl(0, 0%, 15%);
+    --weak-color: hsl(0, 0%, 45%);
+    --divider-color: hsl(0, 0%, 90%);
+    --gold: #eab308;
+    --silver: #94a3b8;
+    --bronze: #c2703d;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: hsl(220, 25%, 97%);
+    min-height: 100vh;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    color: var(--icon-color);
+}
+
+/* ---------- 顶部通用 header ---------- */
+#header-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 20px 0 8px;
+}
+
+.title-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transform: translateX(-8px);
+}
+
+#logo {
+    display: flex;
+    width: 44px;
+    height: 44px;
+    margin-top: 3px;
+}
+
+#web-header {
+    text-decoration: none;
+    color: black;
+}
+
+#web-header h1 {
+    margin: 0;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: black;
+}
+
+.back-home-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--blue);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    transition: background-color 0.2s ease;
+}
+
+.back-home-link:hover {
+    background-color: var(--blue-light);
+}
+
+/* ---------- 页面主体 ---------- */
+.hub-main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 12px 20px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    flex: 1 0 auto;
+    width: 100%;
+}
+
+.hub-card-base {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.06);
+}
+
+/* ---------- Hero ---------- */
+.hub-hero {
+    text-align: center;
+    padding: 8px 12px 4px;
+    animation: hubFadeIn 0.5s ease both;
+}
+
+.hub-hero p {
+    margin: 0;
+    color: var(--weak-color);
+    font-size: 0.98rem;
+}
+
+@keyframes hubFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- 个人统计卡 ---------- */
+.personal-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    animation: hubFadeIn 0.5s ease 0.05s both;
+}
+
+@media (max-width: 560px) {
+    .personal-stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.personal-stat-card {
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 6px 16px rgba(16, 24, 40, 0.05);
+    padding: 20px;
+    text-align: center;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.personal-stat-card:hover {
+    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.08), 0 12px 26px rgba(16, 24, 40, 0.09);
+    transform: translateY(-2px);
+}
+
+.personal-stat-icon {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 10px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+}
+
+.personal-stat-icon-rank {
+    background: hsl(270, 60%, 95%);
+    color: hsl(270, 55%, 52%);
+}
+
+.personal-stat-icon-time {
+    background: hsl(212, 90%, 94%);
+    color: hsl(212, 80%, 45%);
+}
+
+.personal-stat-icon-streak {
+    background: hsl(24, 90%, 94%);
+    color: hsl(24, 85%, 48%);
+}
+
+.personal-stat-label {
+    margin: 0 0 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--weak-color);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.personal-stat-value {
+    margin: 0;
+    font-size: 1.7rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    transition: opacity 0.3s ease;
+}
+
+.login-prompt-card {
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 6px 16px rgba(16, 24, 40, 0.05);
+    padding: 18px;
+    text-align: center;
+    color: var(--weak-color);
+    font-size: 0.9rem;
+}
+
+.login-prompt-card i {
+    margin-right: 6px;
+}
+
+/* ---------- Metric selector ---------- */
+.metric-selector {
+    display: flex;
+    gap: 6px;
+    background: hsl(0, 0%, 93%);
+    padding: 4px;
+    border-radius: 12px;
+    overflow-x: auto;
+}
+
+.metric-tab {
+    flex: 1;
+    white-space: nowrap;
+    padding: 9px 16px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--weak-color);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.metric-tab.active {
+    background: #ffffff;
+    color: var(--icon-color);
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.12);
+}
+
+.metric-tab:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+/* ---------- 骨架屏 ---------- */
+.hub-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+@keyframes skeletonPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+}
+
+.podium-skeleton {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 16px;
+    height: 160px;
+}
+
+.podium-skeleton-col {
+    width: 100px;
+    border-radius: 14px;
+    background: hsl(0, 0%, 91%);
+    animation: skeletonPulse 1.4s ease infinite;
+}
+
+.podium-skeleton-col.tall { height: 150px; }
+.podium-skeleton-col.short { height: 110px; }
+
+.list-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.list-skeleton-row {
+    height: 56px;
+    border-radius: 12px;
+    background: hsl(0, 0%, 93%);
+    animation: skeletonPulse 1.4s ease infinite;
+}
+
+/* ---------- Top 3 领奖台 ---------- */
+.podium {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 16px;
+    animation: hubFadeIn 0.5s ease 0.1s both;
+}
+
+.podium-col {
+    flex: 1;
+    max-width: 200px;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 18px 14px 20px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 8px 20px rgba(16, 24, 40, 0.07);
+    position: relative;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    animation: podiumRise 0.5s ease both;
+}
+
+.podium-col:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 10px rgba(16, 24, 40, 0.1), 0 14px 28px rgba(16, 24, 40, 0.1);
+}
+
+@keyframes podiumRise {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.podium-gold {
+    order: 2;
+    padding-top: 26px;
+    padding-bottom: 26px;
+    border: 1.5px solid hsl(45, 90%, 80%);
+}
+
+.podium-silver {
+    order: 1;
+    margin-bottom: 22px;
+}
+
+.podium-bronze {
+    order: 3;
+    margin-bottom: 10px;
+}
+
+.podium-rank-badge {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.podium-gold .podium-rank-badge { background: var(--gold); }
+.podium-silver .podium-rank-badge { background: var(--silver); }
+.podium-bronze .podium-rank-badge { background: var(--bronze); }
+
+.podium-avatar {
+    width: 56px;
+    height: 56px;
+    margin: 10px auto 12px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, hsl(207, 75%, 55%), hsl(258, 65%, 60%));
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.podium-gold .podium-avatar {
+    width: 68px;
+    height: 68px;
+    font-size: 1.7rem;
+}
+
+.podium-username {
+    margin: 0 0 4px;
+    font-weight: 700;
+    font-size: 0.92rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.podium-value {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--weak-color);
+    font-variant-numeric: tabular-nums;
+}
+
+.you-tag {
+    display: inline-block;
+    background: var(--blue);
+    color: #ffffff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 999px;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+/* ---------- 剩余排名列表 ---------- */
+.leaderboard-list-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.06);
+    padding: 10px;
+    animation: hubFadeIn 0.5s ease 0.15s both;
+}
+
+.leaderboard-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    transition: background-color 0.15s ease;
+}
+
+.leaderboard-row:hover {
+    background: hsl(220, 30%, 98%);
+}
+
+.leaderboard-row-me {
+    background: var(--blue-light);
+}
+
+.leaderboard-row-me:hover {
+    background: var(--blue-light);
+}
+
+.row-rank {
+    width: 34px;
+    flex-shrink: 0;
+    font-weight: 700;
+    color: var(--weak-color);
+    font-size: 0.88rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.row-avatar {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: linear-gradient(135deg, hsl(207, 75%, 55%), hsl(258, 65%, 60%));
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.row-username {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.row-value {
+    flex-shrink: 0;
+    font-size: 0.88rem;
+    color: var(--weak-color);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 钉住自己的排名（不在可见榜单范围内时） ---------- */
+.your-rank-pinned {
+    animation: hubFadeIn 0.4s ease both;
+}
+
+.pinned-row {
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 8px 20px rgba(16, 24, 40, 0.07);
+    border: 1.5px dashed var(--blue);
+}
+
+/* ---------- 空状态 ---------- */
+.hub-empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.06);
+}
+
+.hub-empty-icon {
+    font-size: 2rem;
+    color: var(--weak-color);
+    margin-bottom: 12px;
+}
+
+.hub-empty-title {
+    margin: 0 0 4px;
+    font-weight: 700;
+}
+
+.hub-empty-subtext {
+    margin: 0;
+    color: var(--weak-color);
+    font-size: 0.88rem;
+}
+
+/* ---------- 响应式：平板/手机上领奖台改成堆叠，不然三栏会挤爆 ---------- */
+@media (max-width: 600px) {
+    .podium {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    .podium-gold, .podium-silver, .podium-bronze {
+        order: 0;
+        margin-bottom: 0;
+    }
+    .podium-gold {
+        padding-top: 18px;
+        padding-bottom: 18px;
+    }
+    .row-value {
+        font-size: 0.8rem;
+    }
+}

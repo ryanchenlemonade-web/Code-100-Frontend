@@ -5,9 +5,6 @@ const ACTIVITY_API_BASE = APP_API_BASE + '/api/activity';
 const PROGRESS_API_BASE = APP_API_BASE + '/api/progress';
 const TOKEN_KEY = 'csci1100_auth_token';
 
-// 圆环进度条的周长（跟 profile.css 里 stroke-dasharray 的数值要对上：2 * π * 34 ≈ 213.6）
-const PROGRESS_RING_CIRCUMFERENCE = 213.6;
-
 function getToken() {
     return localStorage.getItem(TOKEN_KEY);
 }
@@ -60,9 +57,39 @@ async function loadProfile() {
         startHeartbeat();
         loadPracticeProgress(token);
         loadDailySummary(token);
+        loadLeaderboardRank(token);
     } catch (error) {
         console.error('Failed to load profile:', error);
         notLoggedInState.style.display = 'block';
+    }
+}
+
+// ---------- Leaderboard Rank：真实排名，来自 /api/leaderboard 接口里算好的 "you" ----------
+async function loadLeaderboardRank(token) {
+    try {
+        const response = await fetch(`${APP_API_BASE}/api/leaderboard`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const you = data.you;
+        if (!you) return;
+
+        const valueEl = document.getElementById('leaderboard-rank-value');
+        const hintEl = document.getElementById('leaderboard-rank-hint');
+        if (valueEl) {
+            valueEl.textContent = `#${you.rank}`;
+            valueEl.classList.remove('stat-cell-value-muted', 'rank-color-gold', 'rank-color-silver', 'rank-color-bronze');
+
+            // 前三名各自专属颜色（金/银/铜），4名开外用默认的深色数字
+            if (you.rank === 1) valueEl.classList.add('rank-color-gold');
+            else if (you.rank === 2) valueEl.classList.add('rank-color-silver');
+            else if (you.rank === 3) valueEl.classList.add('rank-color-bronze');
+        }
+        if (hintEl) hintEl.textContent = 'View full leaderboard \u2192';
+    } catch (error) {
+        console.error('Failed to load leaderboard rank:', error);
     }
 }
 
@@ -79,14 +106,11 @@ async function loadPracticeProgress(token) {
         const total = data.totalTests || 0;
         const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-        const ring = document.getElementById('practice-progress-ring');
+        const fillEl = document.getElementById('practice-progress-fill');
         const percentText = document.getElementById('practice-progress-percent');
-        const hintText = document.querySelector('.stat-cell-ring-text .stat-cell-hint');
+        const hintText = document.getElementById('practice-progress-hint');
 
-        if (ring) {
-            const offset = PROGRESS_RING_CIRCUMFERENCE * (1 - percent / 100);
-            ring.style.strokeDashoffset = offset;
-        }
+        if (fillEl) fillEl.style.width = `${percent}%`;
         if (percentText) percentText.textContent = `${percent}%`;
         if (hintText) hintText.textContent = `${completed} of ${total} tests \u2014 ${completed === 0 ? 'start practicing!' : 'keep it up!'}`;
     } catch (error) {

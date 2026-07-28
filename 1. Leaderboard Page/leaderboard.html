@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaderboard — Code 100</title>
+    <link rel="stylesheet" href="leaderboard.css">
+    <link rel="stylesheet" href="../0. Shared/auth.css">
+    <link rel="icon" type="image/png" href="../0. images/Code 100.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+<body>
+
+    <div id="header-wrapper">
+        <div class="title-row">
+            <img id="logo" src="../0. images/Code 100.png">
+            <a id="web-header" href="../1. Home Page/home_page.html">
+                <h1>LeaderBoard</h1>
+            </a>
+        </div>
+        <a href="../1. Home Page/home_page.html" class="back-home-link">
+            <span class="back-home-arrow">&larr;</span> Back to Home
+        </a>
+    </div>
+
+    <main class="hub-main">
+
+        <!-- Hero -->
+        <div class="hub-hero">
+            <p>Track your progress. Challenge yourself. Learn with the community.</p>
+        </div>
+
+        <!-- 个人统计卡：登录了才有真实数据，没登录显示引导登录的提示卡 -->
+        <div class="personal-stats-grid" id="personal-stats">
+            <div class="personal-stat-card" id="stat-rank-card">
+                <div class="personal-stat-icon personal-stat-icon-rank"><i class="fa-solid fa-ranking-star"></i></div>
+                <p class="personal-stat-label">Current Rank</p>
+                <p class="personal-stat-value" id="stat-rank-value">—</p>
+            </div>
+            <div class="personal-stat-card">
+                <div class="personal-stat-icon personal-stat-icon-time"><i class="fa-solid fa-stopwatch"></i></div>
+                <p class="personal-stat-label">Total Study Time</p>
+                <p class="personal-stat-value" id="stat-time-value">—</p>
+            </div>
+            <div class="personal-stat-card">
+                <div class="personal-stat-icon personal-stat-icon-streak"><i class="fa-solid fa-fire"></i></div>
+                <p class="personal-stat-label">Current Streak</p>
+                <p class="personal-stat-value" id="stat-streak-value">—</p>
+            </div>
+        </div>
+
+        <!-- 未登录提示（覆盖在统计卡区域，见 JS 控制显示/隐藏） -->
+        <div class="login-prompt-card" id="login-prompt-card" style="display: none;">
+            <p><i class="fa-solid fa-lock"></i> Log in to see your personal rank and stats.</p>
+        </div>
+
+        <!-- 榜单类型切换：现在只有 Study Time 这一个类别有真实数据，
+             其他先做成禁用状态的占位，方便以后直接接上而不用重新设计界面 -->
+        <div class="metric-selector">
+            <button class="metric-tab active" data-metric="study-time">Study Time</button>
+            <button class="metric-tab" disabled title="Coming soon">Problems Solved</button>
+            <button class="metric-tab" disabled title="Coming soon">Streak</button>
+            <button class="metric-tab" disabled title="Coming soon">Mock Exam Scores</button>
+        </div>
+
+        <!-- 加载骨架屏 -->
+        <div class="hub-skeleton" id="hub-skeleton">
+            <div class="podium-skeleton">
+                <div class="podium-skeleton-col short"></div>
+                <div class="podium-skeleton-col tall"></div>
+                <div class="podium-skeleton-col short"></div>
+            </div>
+            <div class="list-skeleton">
+                <div class="list-skeleton-row"></div>
+                <div class="list-skeleton-row"></div>
+                <div class="list-skeleton-row"></div>
+                <div class="list-skeleton-row"></div>
+                <div class="list-skeleton-row"></div>
+            </div>
+        </div>
+
+        <!-- Top 3 领奖台 -->
+        <div class="podium" id="podium" style="display: none;"></div>
+
+        <!-- 剩下的排名列表 -->
+        <div class="leaderboard-list-card" id="leaderboard-list-card" style="display: none;">
+            <div class="leaderboard-list" id="leaderboard-list"></div>
+        </div>
+
+        <!-- 如果你不在榜单可见范围内，单独钉一行显示你自己的真实排名 -->
+        <div class="your-rank-pinned" id="your-rank-pinned" style="display: none;"></div>
+
+        <!-- 完全没有任何用户上榜时的空状态 -->
+        <div class="hub-empty-state" id="hub-empty-state" style="display: none;">
+            <div class="hub-empty-icon"><i class="fa-regular fa-flag"></i></div>
+            <p class="hub-empty-title">No rankings yet</p>
+            <p class="hub-empty-subtext">Be the first to start practicing and claim the top spot.</p>
+        </div>
+
+    </main>
+
+    <!-- 登录/注册 弹窗（共用片段） -->
+    <div id="auth-modal-container"></div>
+
+    <!-- footer -->
+    <div id="footer-container"></div>
+
+    <script src="../0. Shared/config.js"></script>
+    <script src="leaderboard.js"></script>
+    <script src="../0. Shared/auth.js"></script>
+</body>
+</html>
