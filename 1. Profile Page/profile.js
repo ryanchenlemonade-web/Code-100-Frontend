@@ -27,6 +27,63 @@ function formatMemberSince(isoString) {
 const notLoggedInState = document.getElementById('not-logged-in-state');
 const profileContent = document.getElementById('profile-content');
 
+// ---------- Badges：解锁条件全部来自已经在拉的三份真实数据，不用额外接口 ----------
+// completedTests/totalTests 来自 loadPracticeProgress，streak 来自 loadDailySummary，
+// rank 来自 loadLeaderboardRank——三个各自拉完数据后更新这个对象，再统一判断解锁状态
+const badgeState = {
+    completedTests: null,
+    totalTests: null,
+    streak: null,
+    rank: null,
+    totalOnlineSeconds: null
+};
+
+// 每个徽章的解锁条件写成一个函数，方便统计"一共解锁了几个"，以后加新徽章也只用往这个数组里加一项
+const BADGE_DEFINITIONS = [
+    { id: 'badge-first-steps', isUnlocked: () => badgeState.completedTests !== null && badgeState.completedTests >= 1 },
+    { id: 'badge-on-fire', isUnlocked: () => badgeState.streak !== null && badgeState.streak >= 3 },
+    { id: 'badge-test-ace', isUnlocked: () => badgeState.completedTests !== null && badgeState.totalTests !== null
+        && badgeState.totalTests > 0 && badgeState.completedTests === badgeState.totalTests },
+    { id: 'badge-top-10', isUnlocked: () => badgeState.rank !== null && badgeState.rank <= 10 },
+    { id: 'badge-podium', isUnlocked: () => badgeState.rank !== null && badgeState.rank <= 3 },
+    { id: 'badge-week-warrior', isUnlocked: () => badgeState.streak !== null && badgeState.streak >= 7 },
+    { id: 'badge-marathon', isUnlocked: () => badgeState.totalOnlineSeconds !== null && badgeState.totalOnlineSeconds >= 36000 }
+];
+
+function updateBadges() {
+    let earnedCount = 0;
+    BADGE_DEFINITIONS.forEach(badge => {
+        const unlocked = badge.isUnlocked();
+        setBadgeUnlocked(badge.id, unlocked);
+        if (unlocked) earnedCount++;
+    });
+
+    const countEl = document.getElementById('badges-count');
+    if (countEl) countEl.textContent = `${earnedCount} out of ${BADGE_DEFINITIONS.length}`;
+}
+
+function setBadgeUnlocked(elementId, unlocked) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.classList.toggle('badge-locked', !unlocked);
+    el.classList.toggle('badge-unlocked', unlocked);
+}
+
+// ---------- 徽章展馆左右滑动 ----------
+const badgesRow = document.getElementById('badges-row');
+const badgesNavLeft = document.getElementById('badges-nav-left');
+const badgesNavRight = document.getElementById('badges-nav-right');
+
+if (badgesRow && badgesNavLeft && badgesNavRight) {
+    const SCROLL_AMOUNT = 300;
+    badgesNavLeft.addEventListener('click', () => {
+        badgesRow.scrollBy({ left: -SCROLL_AMOUNT, behavior: 'smooth' });
+    });
+    badgesNavRight.addEventListener('click', () => {
+        badgesRow.scrollBy({ left: SCROLL_AMOUNT, behavior: 'smooth' });
+    });
+}
+
 async function loadProfile() {
     const token = getToken();
 
@@ -52,6 +109,9 @@ async function loadProfile() {
         document.getElementById('profile-username').textContent = data.username;
         document.getElementById('profile-member-since').textContent = `Member since ${formatMemberSince(data.memberSince)}`;
         document.getElementById('online-time-value').textContent = formatOnlineTime(data.totalOnlineSeconds || 0);
+
+        badgeState.totalOnlineSeconds = data.totalOnlineSeconds || 0;
+        updateBadges();
 
         profileContent.style.display = 'block';
         startHeartbeat();
@@ -88,6 +148,9 @@ async function loadLeaderboardRank(token) {
             else if (you.rank === 3) valueEl.classList.add('rank-color-bronze');
         }
         if (hintEl) hintEl.textContent = 'View full leaderboard \u2192';
+
+        badgeState.rank = you.rank;
+        updateBadges();
     } catch (error) {
         console.error('Failed to load leaderboard rank:', error);
     }
@@ -113,6 +176,10 @@ async function loadPracticeProgress(token) {
         if (fillEl) fillEl.style.width = `${percent}%`;
         if (percentText) percentText.textContent = `${percent}%`;
         if (hintText) hintText.textContent = `${completed} of ${total} tests \u2014 ${completed === 0 ? 'start practicing!' : 'keep it up!'}`;
+
+        badgeState.completedTests = completed;
+        badgeState.totalTests = total;
+        updateBadges();
     } catch (error) {
         console.error('Failed to load practice progress:', error);
     }
@@ -130,6 +197,9 @@ async function loadDailySummary(token) {
 
         const streakEl = document.getElementById('streak-value');
         if (streakEl) streakEl.textContent = data.streak || 0;
+
+        badgeState.streak = data.streak || 0;
+        updateBadges();
 
         const streakHintEl = document.querySelector('.stat-icon-streak').closest('.stat-cell').querySelector('.stat-cell-hint');
         if (streakHintEl) {

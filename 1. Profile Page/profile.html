@@ -118,28 +118,56 @@
 
             <!-- 4. 徽章：同样诚实展示成未解锁状态，不编造已获得的成就 -->
             <div class="profile-card badges-card">
-                <h2 class="section-title">Badges</h2>
-                <div class="badges-row">
-                    <div class="badge-item badge-locked">
-                        <div class="badge-icon"><i class="fa-solid fa-seedling"></i></div>
-                        <p class="badge-name">First Steps</p>
-                        <p class="badge-desc">Complete 1 question</p>
+                <div class="badges-header">
+                    <h2 class="section-title">Badges</h2>
+                    <span class="badges-count" id="badges-count">0 out of 0</span>
+                </div>
+                <div class="badges-gallery">
+                    <button class="badges-nav-btn badges-nav-left" id="badges-nav-left" aria-label="Scroll left">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+
+                    <div class="badges-row" id="badges-row">
+                        <div class="badge-item badge-locked" id="badge-first-steps">
+                            <div class="badge-icon"><i class="fa-solid fa-seedling"></i></div>
+                            <p class="badge-name">First Steps</p>
+                            <p class="badge-desc">Complete your first test</p>
+                        </div>
+                        <div class="badge-item badge-locked" id="badge-on-fire">
+                            <div class="badge-icon"><i class="fa-solid fa-fire"></i></div>
+                            <p class="badge-name">On Fire</p>
+                            <p class="badge-desc">3-day streak</p>
+                        </div>
+                        <div class="badge-item badge-locked" id="badge-test-ace">
+                            <div class="badge-icon"><i class="fa-solid fa-medal"></i></div>
+                            <p class="badge-name">Test Ace</p>
+                            <p class="badge-desc">Complete every test</p>
+                        </div>
+                        <div class="badge-item badge-locked" id="badge-top-10">
+                            <div class="badge-icon"><i class="fa-solid fa-crown"></i></div>
+                            <p class="badge-name">Top 10</p>
+                            <p class="badge-desc">Reach the top 10 leaderboard</p>
+                        </div>
+                        <div class="badge-item badge-locked" id="badge-podium">
+                            <div class="badge-icon"><i class="fa-solid fa-trophy"></i></div>
+                            <p class="badge-name">Podium Finish</p>
+                            <p class="badge-desc">Reach the top 3 leaderboard</p>
+                        </div>
+                        <div class="badge-item badge-locked" id="badge-week-warrior">
+                            <div class="badge-icon"><i class="fa-solid fa-calendar-week"></i></div>
+                            <p class="badge-name">Week Warrior</p>
+                            <p class="badge-desc">7-day streak</p>
+                        </div>
+                        <div class="badge-item badge-locked" id="badge-marathon">
+                            <div class="badge-icon"><i class="fa-solid fa-person-running"></i></div>
+                            <p class="badge-name">Marathon</p>
+                            <p class="badge-desc">Study for 10 total hours</p>
+                        </div>
                     </div>
-                    <div class="badge-item badge-locked">
-                        <div class="badge-icon"><i class="fa-solid fa-fire"></i></div>
-                        <p class="badge-name">On Fire</p>
-                        <p class="badge-desc">3-day streak</p>
-                    </div>
-                    <div class="badge-item badge-locked">
-                        <div class="badge-icon"><i class="fa-solid fa-medal"></i></div>
-                        <p class="badge-name">Test Ace</p>
-                        <p class="badge-desc">Finish a full test</p>
-                    </div>
-                    <div class="badge-item badge-locked">
-                        <div class="badge-icon"><i class="fa-solid fa-crown"></i></div>
-                        <p class="badge-name">Top 10</p>
-                        <p class="badge-desc">Reach the leaderboard</p>
-                    </div>
+
+                    <button class="badges-nav-btn badges-nav-right" id="badges-nav-right" aria-label="Scroll right">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
                 </div>
             </div>
 
