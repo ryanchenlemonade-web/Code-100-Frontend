@@ -30,6 +30,17 @@ let papersByCategory = {};
 
 const contentContainer = document.getElementById('content-container');
 
+// Revision 首页的两张卡片 + 两个子板块里的"返回"按钮，都靠这一个委托监听器处理。
+// 用委托是因为切换 Test 分类时，骨架会通过 contentContainer.innerHTML 整个重新生成一份，
+// 里面的按钮都是全新的 DOM 节点——如果直接绑在按钮本身，切一次 Test 分类监听器就失效了；
+// 绑在 contentContainer 这个不会被替换的外层元素上，就不用管里面的按钮换了多少轮
+contentContainer.addEventListener('click', (e) => {
+    const navBtn = e.target.closest('[data-revision-nav]');
+    if (!navBtn) return;
+    e.preventDefault();
+    showRevisionView(navBtn.dataset.revisionNav);
+});
+
 // 页面加载时调用一次，把所有试卷按分类拉回来并缓存
 function fetchPapersGrouped() {
     return fetch(`${APP_API_BASE}/api/papers/grouped`)
@@ -189,11 +200,10 @@ items.forEach(item => {
             target.style.animation = 'contentFadeIn 0.9s ease forwards';
         }
 
-        // 切到 Revision 标签页时，实时拉一次这个用户标过重点的题目（不缓存，
-        // 保证跟 Practice 那边刚标/取消的星标状态是同步的），顺手初始化 Crib Sheet
+        // 切到 Revision 标签页时，先回到首页（两张卡片），具体内容等用户点进某张卡片才加载，
+        // 不用一进来就把星标题目和 Crib Sheet 都请求一遍
         if (this.id === 'revision') {
-            loadRevisionQuestions();
-            initCribSheet();
+            showRevisionView('landing');
         }
     });
 });

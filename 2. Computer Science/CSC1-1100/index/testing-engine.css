@@ -80,6 +80,7 @@
     margin-bottom: 44px;
     padding-bottom: 32px;
     border-bottom: 1px solid var(--divider-color);
+    scroll-margin-top: 100px; /* "Go to Question" 跳过来时，题号不会被吸顶的 nav-bar 挡住 */
 }
 
 /* 请求还没回来时显示的"加载中"提示，带一个简单的旋转小图标，避免用户以为卡住了 */
@@ -161,17 +162,255 @@
 }
 
 .question-star-btn:hover {
-    color: hsl(45, 90%, 55%);
+    color: hsl(212, 80%, 60%);
     transform: scale(1.15);
 }
 
 .question-star-btn.starred {
-    color: hsl(45, 90%, 50%);
+    color: hsl(212, 85%, 48%);
 }
 
 .question-star-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* Revision 页面：首页 + 两个子板块，同一时间只显示一个 */
+.revision-view {
+    display: none;
+}
+
+.revision-view.active {
+    display: block;
+}
+
+.revision-hero {
+    text-align: center;
+    padding: 12px 12px 8px;
+}
+
+.revision-hero h2 {
+    margin: 0 0 8px;
+    font-size: 1.7rem;
+    font-weight: 700;
+}
+
+.revision-hero p {
+    margin: 0;
+    color: var(--weak-color, #666);
+    font-size: 0.95rem;
+}
+
+.revision-cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    margin-top: 28px;
+}
+
+@media (max-width: 640px) {
+    .revision-cards {
+        grid-template-columns: 1fr;
+    }
+}
+
+.revision-feature-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 28px 24px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.06);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.revision-feature-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.08), 0 14px 32px rgba(16, 24, 40, 0.1);
+}
+
+.revision-feature-icon {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 16px;
+    border-radius: 14px;
+    background: hsl(45, 90%, 94%);
+    color: hsl(40, 85%, 48%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+}
+
+.revision-feature-card h3 {
+    margin: 0 0 8px;
+    font-size: 1.15rem;
+}
+
+.revision-feature-card p {
+    margin: 0 0 20px;
+    color: var(--weak-color, #666);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.revision-card-btn {
+    padding: 10px 26px;
+    border: none;
+    border-radius: 10px;
+    background: hsl(207, 70%, 50%);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.revision-card-btn:hover {
+    background: hsl(207, 70%, 42%);
+}
+
+.revision-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: hsl(207, 70%, 45%);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 0;
+    margin-bottom: 16px;
+}
+
+.revision-back-btn:hover {
+    text-decoration: underline;
+}
+
+/* Revision 筛选行 */
+.revision-filter-row {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin: 4px 0 20px;
+    font-size: 0.9rem;
+}
+
+.revision-filter-row label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.revision-filter-row select {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--divider-color, #ddd);
+    font-size: 0.88rem;
+}
+
+/* "Go to Question" 按钮 */
+.question-goto-btn {
+    background: none;
+    border: 1px solid var(--divider-color, #ddd);
+    border-radius: 999px;
+    padding: 3px 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: hsl(207, 70%, 45%);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.question-goto-btn:hover {
+    background: hsl(207, 70%, 96%);
+}
+
+/* 备注输入框（"为什么标了它"） */
+.question-note-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.question-note-input {
+    flex: 1;
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--divider-color, #ddd);
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.question-note-input:focus {
+    outline: none;
+    border-color: hsl(207, 70%, 55%);
+}
+
+.question-note-status {
+    font-size: 0.78rem;
+    color: hsl(140, 50%, 38%);
+    flex-shrink: 0;
+}
+
+/* Practice 页面的难度评分组件 */
+.rating-widget {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+}
+
+.rating-label {
+    font-size: 0.82rem;
+    color: var(--weak-color, #666);
+    font-weight: 600;
+}
+
+.rating-stars {
+    display: flex;
+    gap: 2px;
+}
+
+.rating-star {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    font-size: 1.05rem;
+    color: hsl(0, 0%, 82%);
+    transition: color 0.12s ease, transform 0.12s ease;
+}
+
+.rating-star:hover {
+    transform: scale(1.15);
+}
+
+/* 整体评分对应一个颜色，不是每颗星各自一个颜色——比如评了 3 分，
+   亮起来的 3 颗星会是同一种"3 分对应的黄色"，而不是三种不同颜色混在一起。
+   颜色故意压低饱和度、拉高亮度，看起来淡一点，不刺眼 */
+.rating-stars.rating-level-1 .rating-star.filled { color: hsl(145, 55%, 58%); }
+.rating-stars.rating-level-2 .rating-star.filled { color: hsl(78, 45%, 54%); }
+.rating-stars.rating-level-3 .rating-star.filled { color: hsl(45, 70%, 58%); }
+.rating-stars.rating-level-4 .rating-star.filled { color: hsl(25, 70%, 60%); }
+.rating-stars.rating-level-5 .rating-star.filled { color: hsl(5, 65%, 62%); }
+
+.rating-avg-text {
+    font-size: 0.78rem;
+    color: var(--weak-color, #888);
+}
+
+/* 从 Revision 跳回 Practice 定位到某道题时，闪一下高亮，方便一眼找到 */
+.question-highlight {
+    animation: questionHighlightPulse 2s ease;
+}
+
+@keyframes questionHighlightPulse {
+    0% { background-color: hsl(45, 90%, 88%); }
+    100% { background-color: transparent; }
 }
 
 /* Revision 空状态（没标过任何题 / 没登录） */
@@ -184,7 +423,7 @@
 .revision-empty-icon {
     font-size: 2rem;
     margin-bottom: 14px;
-    color: hsl(45, 80%, 55%);
+    color: hsl(212, 75%, 60%);
 }
 
 .revision-empty-title {
@@ -202,14 +441,6 @@
 }
 
 /* Revision 页面两个板块之间的分隔 */
-.revision-section {
-    margin-bottom: 48px;
-}
-
-.revision-section:last-child {
-    margin-bottom: 0;
-}
-
 .crib-sheet-header {
     display: flex;
     align-items: center;
@@ -276,6 +507,240 @@
     color: var(--weak-color, #888);
 }
 
+/* ---------- Cribsheet Builder ---------- */
+.cribsheet-intro {
+    color: var(--weak-color, #666);
+    font-size: 0.9rem;
+    margin: 4px 0 20px;
+}
+
+.cribsheet-builder-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+@media (max-width: 800px) {
+    .cribsheet-builder-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* 左边：笔记库 */
+.cribsheet-library-panel {
+    background: hsl(0, 0%, 98%);
+    border-radius: 12px;
+    padding: 16px;
+    max-height: 640px;
+    overflow-y: auto;
+}
+
+.cribsheet-library-panel h3 {
+    margin: 0 0 12px;
+    font-size: 1rem;
+}
+
+.cribsheet-library-category {
+    margin-bottom: 18px;
+}
+
+.cribsheet-library-category h4 {
+    margin: 0 0 6px;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--weak-color, #888);
+}
+
+.cribsheet-library-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    border: 1px solid var(--divider-color, #e2e2e2);
+    border-radius: 8px;
+    background: #ffffff;
+    cursor: pointer;
+    font-size: 0.85rem;
+    text-align: left;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.cribsheet-library-item:hover {
+    border-color: hsl(212, 70%, 60%);
+}
+
+.cribsheet-library-item.added {
+    background: hsl(140, 45%, 95%);
+    border-color: hsl(140, 40%, 70%);
+    color: hsl(140, 45%, 30%);
+}
+
+.cribsheet-library-item i {
+    font-size: 0.78rem;
+    color: hsl(212, 70%, 50%);
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.cribsheet-library-item.added i {
+    color: hsl(140, 50%, 40%);
+}
+
+.cribsheet-library-item:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* 右边：工具栏 */
+.cribsheet-sheet-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.cribsheet-orientation-toggle {
+    display: flex;
+    gap: 4px;
+    background: hsl(0, 0%, 93%);
+    padding: 3px;
+    border-radius: 8px;
+}
+
+.cribsheet-orientation-toggle button {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--weak-color, #666);
+    cursor: pointer;
+}
+
+.cribsheet-orientation-toggle button.active {
+    background: #ffffff;
+    color: var(--icon-color, #222);
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.12);
+}
+
+.cribsheet-pdf-btn {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    background: hsl(207, 70%, 50%);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.cribsheet-pdf-btn:hover {
+    background: hsl(207, 70%, 42%);
+}
+
+/* 右边：一页 Letter 纸的预览区（在屏幕上是个白色卡片，打印的时候靠 @page 控制成真正的纸张大小） */
+.cribsheet-page {
+    background: #ffffff;
+    border: 1px solid var(--divider-color, #ddd);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+    padding: 32px;
+    max-width: 700px;
+}
+
+.cribsheet-page.landscape {
+    max-width: 920px;
+}
+
+.cribsheet-empty-hint {
+    color: var(--weak-color, #888);
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 24px 0;
+}
+
+.cribsheet-note-card {
+    position: relative;
+    padding: 12px 34px 12px 14px;
+    margin-bottom: 10px;
+    border-left: 3px solid hsl(212, 70%, 55%);
+    background: hsl(212, 40%, 98%);
+    border-radius: 0 8px 8px 0;
+}
+
+.cribsheet-note-title {
+    margin: 0 0 4px;
+    font-weight: 700;
+    font-size: 0.92rem;
+}
+
+.cribsheet-note-content {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: #333;
+}
+
+.cribsheet-note-remove {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--weak-color, #999);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 3px;
+}
+
+.cribsheet-note-remove:hover {
+    color: hsl(0, 65%, 55%);
+}
+
+.cribsheet-my-notes-section {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px dashed var(--divider-color, #ddd);
+}
+
+.cribsheet-my-notes-section h4 {
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+/* ---------- 打印专用：只留下 Cribsheet 那一页，其他所有东西都藏起来 ---------- */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    #cribsheet-page, #cribsheet-page * {
+        visibility: visible;
+    }
+    #cribsheet-page {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        max-width: none;
+        border: none;
+        box-shadow: none;
+        padding: 0;
+    }
+    .cribsheet-note-remove {
+        display: none; /* 打印出来的复习单不需要"移除"按钮 */
+    }
+    .crib-sheet-actions {
+        display: none; /* My Notes 那个 Save 按钮打印的时候也不需要 */
+    }
+}
+
 .question-code,
 .answer-code {
     white-space: pre-wrap;
@@ -305,6 +770,7 @@
 }
 
 .show-answer-btn {
+    margin-top: 16px;
     padding: 6px 14px;
     border: none;
     border-radius: 8px;

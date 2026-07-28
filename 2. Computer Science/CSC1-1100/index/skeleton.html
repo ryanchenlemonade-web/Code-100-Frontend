@@ -63,25 +63,106 @@
 <!-- Revision -->
 <div class="test-section" id="revision-content">
 
+    <!-- 首页：标题 + 两张功能卡片 -->
+    <div class="revision-view active" id="revision-view-landing">
+        <div class="revision-hero">
+            <h2>Revision Center</h2>
+            <p>Review your mistakes and build your personalized exam preparation sheet.</p>
+        </div>
+
+        <div class="revision-cards">
+            <div class="revision-feature-card">
+                <div class="revision-feature-icon"><i class="fa-solid fa-star"></i></div>
+                <h3>Marked Questions</h3>
+                <p>Review questions you previously marked during practice.</p>
+                <button type="button" class="revision-card-btn" data-revision-nav="marked-questions">Start Review</button>
+            </div>
+
+            <div class="revision-feature-card">
+                <div class="revision-feature-icon"><i class="fa-solid fa-note-sticky"></i></div>
+                <h3>Cribsheet Builder</h3>
+                <p>Create your own personalized exam cribsheet using your own notes.</p>
+                <button type="button" class="revision-card-btn" data-revision-nav="cribsheet">Build Cribsheet</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 板块一：标过重点的题目 -->
-    <div class="revision-section">
-        <h2>Marked Questions Revision</h2>
+    <div class="revision-view" id="revision-view-marked-questions">
+        <button type="button" class="revision-back-btn" data-revision-nav="landing">
+            <i class="fa-solid fa-arrow-left"></i> Revision Center
+        </button>
+        <h2>Marked Questions</h2>
+
+        <div class="revision-filter-row">
+            <label for="revision-topic-filter">Question Type:
+                <select id="revision-topic-filter">
+                    <option value="">All</option>
+                    <option value="one-liners">One-Liners</option>
+                    <option value="debugging">Debugging</option>
+                    <option value="get-output">Get-Output</option>
+                    <option value="half-program">Half-Program</option>
+                    <option value="full-program">Full-Program</option>
+                </select>
+            </label>
+        </div>
+
         <div id="marked-questions-container">
             <!-- 题目由 JS 动态插入在这里 -->
         </div>
     </div>
 
-    <!-- 板块二：自己写的复习笔记 -->
-    <div class="revision-section">
-        <div class="crib-sheet-header">
-            <h2>Create Your Own Crib Sheet</h2>
-            <div class="crib-sheet-actions">
-                <span class="crib-sheet-status" id="crib-sheet-status"></span>
-                <button id="crib-sheet-save-btn" class="crib-sheet-save-btn">Save</button>
+    <!-- 板块二：Cribsheet Builder（笔记库 + 学生自己拼的复习单，一页 Letter 纸大小） -->
+    <div class="revision-view" id="revision-view-cribsheet">
+        <button type="button" class="revision-back-btn" data-revision-nav="landing">
+            <i class="fa-solid fa-arrow-left"></i> Revision Center
+        </button>
+        <h2>Cribsheet Builder</h2>
+        <p class="cribsheet-intro">Click notes from the library to add them to your sheet, then save it as a PDF to print before your exam.</p>
+
+        <div class="cribsheet-builder-layout">
+
+            <!-- 左边：笔记库 -->
+            <div class="cribsheet-library-panel">
+                <h3>Note Library</h3>
+                <div id="cribsheet-library-container">
+                    <!-- 分类 + 笔记，由 JS 动态插入 -->
+                </div>
             </div>
+
+            <!-- 右边：学生自己的复习单 -->
+            <div class="cribsheet-sheet-panel">
+                <div class="cribsheet-sheet-toolbar">
+                    <div class="cribsheet-orientation-toggle" id="cribsheet-orientation-toggle">
+                        <button type="button" class="active" data-orientation="portrait">Portrait</button>
+                        <button type="button" data-orientation="landscape">Landscape</button>
+                    </div>
+                    <button type="button" id="cribsheet-pdf-btn" class="cribsheet-pdf-btn">
+                        <i class="fa-solid fa-file-arrow-down"></i> Save as PDF
+                    </button>
+                </div>
+
+                <div class="cribsheet-page" id="cribsheet-page">
+                    <div id="cribsheet-selected-notes">
+                        <!-- 已加入的笔记，由 JS 动态插入 -->
+                        <p class="cribsheet-empty-hint" id="cribsheet-empty-hint">No notes added yet — click a note on the left to add it here.</p>
+                    </div>
+
+                    <div class="cribsheet-my-notes-section">
+                        <div class="crib-sheet-header">
+                            <h4>My Notes</h4>
+                            <div class="crib-sheet-actions">
+                                <span class="crib-sheet-status" id="crib-sheet-status"></span>
+                                <button id="crib-sheet-save-btn" class="crib-sheet-save-btn">Save</button>
+                            </div>
+                        </div>
+                        <textarea id="crib-sheet-textarea" class="crib-sheet-textarea"
+                            placeholder="Write your own notes, key formulas, or reminders here — whatever helps you review before a test."></textarea>
+                    </div>
+                </div>
+            </div>
+
         </div>
-        <textarea id="crib-sheet-textarea" class="crib-sheet-textarea"
-            placeholder="Write your own notes, key formulas, or reminders here — whatever helps you review before a test."></textarea>
     </div>
 
 </div>

@@ -56,6 +56,24 @@ function formatQuestionType(rawCategory) {
 // 记录当前登录用户标过重点的题目 id（进 Practice 页面时拉一次，用来决定每道题的星标要不要默认点亮）
 let starredQuestionIds = new Set();
 
+// Revision 页面点"Go to Question"之后，要跳去 Practice 页面对应的 Test 分类并高亮这道题。
+// 这个变量记一下"接下来渲染完题目列表之后要滚到哪一道"，loadPracticeQuestionsByCategory 渲染完会检查它。
+let pendingScrollToQuestionId = null;
+
+function goToQuestionInPractice(question) {
+    // 反查 paper_category（比如 "Test 1"）对应的 nav id（比如 "test1"）——
+    // navToCategory 这个映射定义在 cs1_index.js 里，两个文件同一个页面里跑，是全局可见的
+    const navId = Object.keys(navToCategory).find(key => navToCategory[key] === question.paper_category);
+    if (!navId) return;
+
+    pendingScrollToQuestionId = question.id;
+
+    // 点一下对应的 Test 分类按钮：会自动完成"切分类 + 把 Practice 设为可见 + 重新加载题目"这一整套逻辑，
+    // 不用自己再手写一遍，直接复用现成的点击处理器
+    const navItem = document.getElementById(navId);
+    if (navItem) navItem.click();
+}
+
 // 调用后端切换某道题的星标状态，返回最新状态（true=已标星）
 function toggleQuestionStar(questionId) {
     const token = getToken();
@@ -73,6 +91,58 @@ function toggleQuestionStar(questionId) {
         });
 }
 
+// 记录当前登录用户给哪些题打过几星难度评分（question_id -> 1~5），进 Practice 页面时拉一次
+let myRatings = new Map();
+
+let myRatingsLoadPromise = null;
+function ensureMyRatingsLoaded() {
+    const token = getToken();
+    if (!token) return Promise.resolve();
+    if (myRatingsLoadPromise) return myRatingsLoadPromise;
+
+    myRatingsLoadPromise = fetch(`${APP_API_BASE}/api/progress/my-ratings`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.ok ? res.json() : {})
+        .then(data => {
+            myRatings = new Map(Object.entries(data).map(([qid, rating]) => [Number(qid), rating]));
+        })
+        .catch(error => console.error('Failed to load my ratings:', error));
+
+    return myRatingsLoadPromise;
+}
+
+// 提交/更新某道题的难度评分（1~5），返回是否成功
+function submitQuestionRating(questionId, rating) {
+    const token = getToken();
+    if (!token) return Promise.resolve(false);
+
+    return fetch(`${APP_API_BASE}/api/progress/questions/${questionId}/rate`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ rating })
+    })
+        .then(res => res.ok)
+        .catch(error => {
+            console.error('Failed to submit rating:', error);
+            return false;
+        });
+}
+
+// 星标切换之后，把页面上所有同一道题的星标按钮都同步一遍（Practice 和 Revision 可能同时
+// 各自渲染着这道题的一份 DOM，切标签页只是显示/隐藏，不会重新加载，所以不主动同步的话，
+// 另一边的星星会停留在切换前的旧状态，不会自动跟着变）
+function syncAllStarButtonsForQuestion(questionId, isStarred) {
+    document.querySelectorAll(`.question-block[data-question-id="${questionId}"] .question-star-btn`)
+        .forEach(btn => {
+            btn.classList.toggle('starred', isStarred);
+            btn.title = isStarred ? 'Remove from Revision' : 'Mark as important \u2014 add to Revision';
+        });
+}
+
 // 构建单道题目的 DOM 结构（题号 + 题干代码块），样式全部交给 CSS 里的 class 处理
 // options.displayNumber 有值时，题号直接显示这个序号（Practice 模式跨年份混合展示时，
 // 用它做纯粹的排序序号，而不是这道题在原本那张卷子里的题号，因为不同年份的题号会重复，容易看混）
@@ -80,9 +150,12 @@ function toggleQuestionStar(questionId) {
 // options.showType = true 时，会再加一个题型标签（Practice 模式选 "All" 时，混合了多种题型，用来标注每道题是什么类型）
 // options.showStar = true 时，会在题号那一行右边加一个可以点的星标（Revision 联动用，标了星的题目会出现在 Revision 页面）
 // options.onUnstar 是个回调，只在 Revision 页面用——取消星标之后，把这道题从当前列表里移除
+// options.showGoToQuestion = true 时，会加一个"Go to Question"按钮，跳到 Practice 页面对应的 Test 分类并高亮这道题
+// options.showNote = true 时，题目下方会加一个小备注框（"为什么标了它"），失焦时自动保存
 function buildQuestionBlock(question, options = {}) {
     const wrapper = document.createElement('div');
     wrapper.className = 'question-block';
+    wrapper.dataset.questionId = question.id; // 给"跳回原题"功能定位用
 
     const labelRow = document.createElement('div');
     labelRow.className = 'question-label-row';
@@ -109,13 +182,22 @@ function buildQuestionBlock(question, options = {}) {
         labelRow.appendChild(typeTag);
     }
 
+    if (options.showGoToQuestion && question.paper_category) {
+        const goToBtn = document.createElement('button');
+        goToBtn.type = 'button';
+        goToBtn.className = 'question-goto-btn';
+        goToBtn.innerHTML = '<i class="fa-solid fa-arrow-up-right-from-square"></i> Go to Question';
+        goToBtn.addEventListener('click', () => goToQuestionInPractice(question));
+        labelRow.appendChild(goToBtn);
+    }
+
     if (options.showStar) {
         const starBtn = document.createElement('button');
         starBtn.type = 'button';
         starBtn.className = 'question-star-btn';
         const isStarred = starredQuestionIds.has(question.id);
         starBtn.classList.toggle('starred', isStarred);
-        starBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
+        starBtn.innerHTML = '<i class="fa-solid fa-location-dot"></i>';
         starBtn.title = isStarred ? 'Remove from Revision' : 'Mark as important \u2014 add to Revision';
 
         starBtn.addEventListener('click', () => {
@@ -135,6 +217,7 @@ function buildQuestionBlock(question, options = {}) {
                 }
                 starBtn.classList.toggle('starred', nowStarred);
                 starBtn.title = nowStarred ? 'Remove from Revision' : 'Mark as important \u2014 add to Revision';
+                syncAllStarButtonsForQuestion(question.id, nowStarred);
 
                 // Revision 页面里取消星标时，直接把这道题从列表里移除，不用整页重新拉一次数据
                 if (!nowStarred && options.onUnstar) {
@@ -153,7 +236,131 @@ function buildQuestionBlock(question, options = {}) {
     questionPre.textContent = question.question_description;
     wrapper.appendChild(questionPre);
 
+    if (options.showRating) {
+        wrapper.appendChild(buildRatingWidget(question));
+    }
+
+    if (options.showNote) {
+        const noteWrap = document.createElement('div');
+        noteWrap.className = 'question-note-wrap';
+
+        const noteInput = document.createElement('input');
+        noteInput.type = 'text';
+        noteInput.className = 'question-note-input';
+        noteInput.placeholder = 'Why did you mark this question? (optional)';
+        noteInput.value = question.note || '';
+        noteInput.maxLength = 500;
+
+        const noteStatus = document.createElement('span');
+        noteStatus.className = 'question-note-status';
+
+        // 失焦时自动保存，不用单独放个 Save 按钮，跟每道题写点小备注这个场景更贴合
+        noteInput.addEventListener('blur', () => {
+            const newValue = noteInput.value.trim();
+            if (newValue === (question.note || '')) return; // 没改动就不用发请求
+
+            const token = getToken();
+            if (!token) return;
+
+            fetch(`${APP_API_BASE}/api/progress/questions/${question.id}/note`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ note: newValue })
+            })
+                .then(res => res.ok ? res.json() : Promise.reject())
+                .then(() => {
+                    question.note = newValue;
+                    noteStatus.textContent = 'Saved';
+                    setTimeout(() => { noteStatus.textContent = ''; }, 2000);
+                })
+                .catch(() => {
+                    noteStatus.textContent = 'Failed to save';
+                });
+        });
+
+        noteWrap.appendChild(noteInput);
+        noteWrap.appendChild(noteStatus);
+        wrapper.appendChild(noteWrap);
+    }
+
     return wrapper;
+}
+
+// Practice 页面用：5 星难度评分组件。点第几颗星就把评分设成几分（1~5），
+// 已经评过的话进来就是点亮到对应位置；右边显示全站平均分 + 评分人数（静态展示，不会实时刷新，
+// 想看到自己这次评分对平均分的影响，得刷新页面重新拉一次数据）
+function buildRatingWidget(question) {
+    const wrap = document.createElement('div');
+    wrap.className = 'rating-widget';
+
+    const starsWrap = document.createElement('div');
+    starsWrap.className = 'rating-stars';
+
+    const label = document.createElement('span');
+    label.className = 'rating-label';
+    label.textContent = 'Rate difficulty:';
+    wrap.appendChild(label);
+
+    let currentRating = myRatings.get(question.id) || 0;
+
+    const starEls = [];
+    for (let i = 1; i <= 5; i++) {
+        const starBtn = document.createElement('button');
+        starBtn.type = 'button';
+        starBtn.className = 'rating-star';
+        starBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
+        starBtn.title = `${i} star${i > 1 ? 's' : ''}`;
+        starEls.push(starBtn);
+        starsWrap.appendChild(starBtn);
+    }
+
+    function paintStars(uptoValue) {
+        starEls.forEach((el, index) => {
+            el.classList.toggle('filled', index < uptoValue);
+        });
+        // 整体评分对应一个颜色等级（1~5），加在容器上，CSS 靠这个 class 统一给所有点亮的星上色
+        starsWrap.className = 'rating-stars' + (uptoValue > 0 ? ` rating-level-${uptoValue}` : '');
+    }
+    paintStars(currentRating);
+
+    // hover 预览：划过第几颗就先亮到那，移开鼠标恢复到真实已选的评分
+    starsWrap.addEventListener('mouseleave', () => paintStars(currentRating));
+
+    starEls.forEach((starBtn, index) => {
+        const value = index + 1;
+        starBtn.addEventListener('mouseenter', () => paintStars(value));
+        starBtn.addEventListener('click', () => {
+            if (!getToken()) return;
+
+            const previousRating = currentRating;
+            currentRating = value;
+            paintStars(currentRating);
+            myRatings.set(question.id, currentRating);
+
+            submitQuestionRating(question.id, value).then(success => {
+                if (!success) {
+                    // 保存失败就退回原来的评分，别让界面显示跟后端不一致的假象
+                    currentRating = previousRating;
+                    myRatings.set(question.id, previousRating);
+                    paintStars(currentRating);
+                }
+            });
+        });
+    });
+
+    wrap.appendChild(starsWrap);
+
+    if (question.rating_count) {
+        const avgText = document.createElement('span');
+        avgText.className = 'rating-avg-text';
+        avgText.textContent = `Avg ${question.avg_rating} (${question.rating_count} rating${question.rating_count > 1 ? 's' : ''})`;
+        wrap.appendChild(avgText);
+    }
+
+    return wrap;
 }
 
 // 获取 Practice 模式题目（新版）：按 Test 分类查询，跨所有年份混合展示，
@@ -171,7 +378,7 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
 
     // 先把这个用户标过星的题目 id 拉回来（没登录就跳过，星标按钮还是会显示，只是默认都是空心状态），
     // 这样题目渲染出来的时候，已经标过重点的题就能一开始就显示实心星标，不用等用户自己点一遍才知道
-    ensureStarredQuestionIdsLoaded().finally(() => {
+    Promise.all([ensureStarredQuestionIdsLoaded(), ensureMyRatingsLoaded()]).finally(() => {
         fetch(`${APP_API_BASE}/api/questions/practice-by-category?${params.toString()}`)
             .then(response => response.json())
             .then(data => {
@@ -189,7 +396,7 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
                 });
 
                 data.forEach((question, index) => {
-                    const wrapper = buildQuestionBlock(question, { showYear: true, showType, displayNumber: index + 1, showStar: true });
+                    const wrapper = buildQuestionBlock(question, { showYear: true, showType, displayNumber: index + 1, showStar: true, showRating: true });
 
                     if (question.question_solution) {
                         const toggleBtn = document.createElement('button');
@@ -214,6 +421,7 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
                 });
 
                 triggerFadeIn(questionsWrap);
+                scrollToPendingQuestionIfAny(questionsWrap);
             })
             .catch(error => {
                 console.error('Failed to Obtain Practice Questions:', error);
@@ -221,6 +429,24 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
             });
     });
 }
+
+// 从 Revision 页面点"Go to Question"跳过来的话，题目渲染完之后滚到那道题、闪一下高亮，
+// 方便用户一眼找到，而不是要在一长串题目里自己找
+function scrollToPendingQuestionIfAny(container) {
+    if (!pendingScrollToQuestionId) return;
+
+    const target = container.querySelector(`[data-question-id="${pendingScrollToQuestionId}"]`);
+    pendingScrollToQuestionId = null;
+    if (!target) return;
+
+    // 等淡入动画先跑一下，避免滚动跟动画同时发生看起来很突兀
+    setTimeout(() => {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target.classList.add('question-highlight');
+        setTimeout(() => target.classList.remove('question-highlight'), 2000);
+    }, 150);
+}
+
 
 // 拉一次"我标过星的题目 id 有哪些"，缓存在 starredQuestionIds 里，避免每次切换 Test/题型筛选都重新请求
 let starredIdsLoadPromise = null;
@@ -512,16 +738,39 @@ function stopTestingTimer() {
     }
 }
 
+// ---------- Revision 页面：首页（两张卡片）+ 两个子板块之间的切换 ----------
+// 因为切 Test 分类时骨架会整个重新生成，这几个 view 元素每次都是新的节点，
+// 所以这个函数本身没有状态依赖，每次调用都是全新查一遍当前 DOM，不会有缓存过期的问题
+function showRevisionView(viewName) {
+    document.querySelectorAll('.revision-view').forEach(v => v.classList.remove('active'));
+    const target = document.getElementById(`revision-view-${viewName}`);
+    if (!target) return;
+
+    target.classList.add('active');
+    triggerFadeIn(target);
+
+    if (viewName === 'marked-questions') {
+        loadRevisionQuestions();
+    } else if (viewName === 'cribsheet') {
+        initCribSheet();
+        initCribsheetBuilder();
+    }
+}
+
 // ---------- Revision 页面 板块一：展示这个用户在 Practice 里标过重点的所有题目 ----------
-// 每次切到 Revision 标签页都重新拉一次（不缓存），保证跟 Practice 那边的星标状态是最新的
+// 每次切到 Revision 标签页都重新拉一次完整列表（不缓存跨会话），筛选是在这份数据上前端本地过滤，
+// 不用每次切筛选条件都重新发请求
+let revisionFullList = [];
+
 function loadRevisionQuestions() {
     const container = document.getElementById('marked-questions-container');
+    const topicFilter = document.getElementById('revision-topic-filter');
     if (!container) return;
 
     const token = getToken();
     if (!token) {
         container.innerHTML = '<div class="revision-empty">' +
-            '<div class="revision-empty-icon"><i class="fa-regular fa-star"></i></div>' +
+            '<div class="revision-empty-icon"><i class="fa-solid fa-location-dot"></i></div>' +
             '<p class="revision-empty-title">Log in to use Revision</p>' +
             '<p class="revision-empty-subtext">Mark questions as important in Practice, and they\u2019ll show up here for quick review.</p>' +
             '</div>';
@@ -535,68 +784,102 @@ function loadRevisionQuestions() {
     })
         .then(res => res.json())
         .then(data => {
-            container.innerHTML = '';
+            revisionFullList = data || [];
+            starredQuestionIds = new Set(revisionFullList.map(q => q.id)); // 保持跟 Practice 页面的星标状态同步
 
-            if (!data || data.length === 0) {
-                container.innerHTML = '<div class="revision-empty">' +
-                    '<div class="revision-empty-icon"><i class="fa-regular fa-star"></i></div>' +
-                    '<p class="revision-empty-title">No marked questions yet</p>' +
-                    '<p class="revision-empty-subtext">Go to Practice and click the star on any question to add it here.</p>' +
-                    '</div>';
-                return;
+            // 筛选下拉框每次骨架重新生成都是新节点，用 dataset 标记避免重复绑监听器
+            if (topicFilter && !topicFilter.dataset.listenerAttached) {
+                topicFilter.dataset.listenerAttached = 'true';
+                topicFilter.addEventListener('change', renderFilteredRevisionList);
             }
 
-            // 保持跟 starredQuestionIds 同步，这样切回 Practice 的时候星标状态还是对的
-            starredQuestionIds = new Set(data.map(q => q.id));
-
-            data.sort((a, b) => {
-                if (b.paper_year !== a.paper_year) return b.paper_year - a.paper_year;
-                return (a.question_number ?? 0) - (b.question_number ?? 0);
-            });
-
-            data.forEach((question, index) => {
-                const wrapper = buildQuestionBlock(question, {
-                    showYear: true,
-                    showType: true,
-                    displayNumber: index + 1,
-                    showStar: true,
-                    // 在 Revision 页面取消星标，直接把这道题从当前列表移除，不用整页重新拉一次
-                    onUnstar: (questionEl) => {
-                        questionEl.remove();
-                        if (container.querySelectorAll('.question-block').length === 0) {
-                            loadRevisionQuestions(); // 全部取消了，刷新一下显示空状态
-                        }
-                    }
-                });
-
-                if (question.question_solution) {
-                    const toggleBtn = document.createElement('button');
-                    toggleBtn.textContent = 'Show Solution';
-                    toggleBtn.className = 'show-answer-btn';
-
-                    const solutionPre = document.createElement('pre');
-                    solutionPre.className = 'answer-code';
-                    solutionPre.textContent = question.question_solution;
-
-                    toggleBtn.addEventListener('click', () => {
-                        const isHidden = !solutionPre.classList.contains('show');
-                        solutionPre.classList.toggle('show', isHidden);
-                        toggleBtn.textContent = isHidden ? 'Hide Solution' : 'Show Solution';
-                    });
-
-                    wrapper.appendChild(toggleBtn);
-                    wrapper.appendChild(solutionPre);
-                }
-
-                container.appendChild(wrapper);
-            });
-
-            triggerFadeIn(container);
+            renderFilteredRevisionList();
         })
         .catch(error => {
             console.error('Failed to load revision questions:', error);
             showQuestionsError(container, 'Failed to load your marked questions. Please try refreshing the page.');
         });
+}
+
+// 根据筛选下拉框当前选的值，从 revisionFullList 里过滤出要显示的题目并渲染
+function renderFilteredRevisionList() {
+    const container = document.getElementById('marked-questions-container');
+    const topicFilter = document.getElementById('revision-topic-filter');
+    if (!container) return;
+
+    if (revisionFullList.length === 0) {
+        container.innerHTML = '<div class="revision-empty">' +
+            '<div class="revision-empty-icon"><i class="fa-solid fa-location-dot"></i></div>' +
+            '<p class="revision-empty-title">No marked questions yet</p>' +
+            '<p class="revision-empty-subtext">Go to Practice and click the star on any question to add it here.</p>' +
+            '</div>';
+        return;
+    }
+
+    const topicValue = topicFilter ? topicFilter.value : '';
+
+    const filtered = revisionFullList.filter(q => {
+        if (topicValue && formatQuestionType(q.question_category) !== topicValue) return false;
+        return true;
+    });
+
+    container.innerHTML = '';
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="revision-empty">' +
+            '<div class="revision-empty-icon"><i class="fa-solid fa-filter-circle-xmark"></i></div>' +
+            '<p class="revision-empty-title">No questions match these filters</p>' +
+            '<p class="revision-empty-subtext">Try a different Topic or Exam filter.</p>' +
+            '</div>';
+        return;
+    }
+
+    filtered.sort((a, b) => {
+        if (b.paper_year !== a.paper_year) return b.paper_year - a.paper_year;
+        return (a.question_number ?? 0) - (b.question_number ?? 0);
+    });
+
+    filtered.forEach((question, index) => {
+        const wrapper = buildQuestionBlock(question, {
+            showYear: true,
+            showType: true,
+            displayNumber: index + 1,
+            showStar: true,
+            showGoToQuestion: true,
+            // 备注输入框先去掉，之后想好新的记笔记方案再说；底层的 note 存储/接口先保留不动
+            // 在 Revision 页面取消星标，直接把这道题从当前列表和缓存里移除，不用整页重新拉一次
+            onUnstar: (questionEl) => {
+                questionEl.remove();
+                revisionFullList = revisionFullList.filter(q => q.id !== question.id);
+                if (container.querySelectorAll('.question-block').length === 0) {
+                    renderFilteredRevisionList(); // 全部取消了，刷新一下显示空状态
+                }
+            }
+        });
+
+        if (question.question_solution) {
+            const toggleBtn = document.createElement('button');
+            toggleBtn.textContent = 'Show Solution';
+            toggleBtn.className = 'show-answer-btn';
+
+            const solutionPre = document.createElement('pre');
+            solutionPre.className = 'answer-code';
+            solutionPre.textContent = question.question_solution;
+
+            toggleBtn.addEventListener('click', () => {
+                const isHidden = !solutionPre.classList.contains('show');
+                solutionPre.classList.toggle('show', isHidden);
+                toggleBtn.textContent = isHidden ? 'Hide Solution' : 'Show Solution';
+            });
+
+            wrapper.appendChild(toggleBtn);
+            wrapper.appendChild(solutionPre);
+        }
+
+        container.appendChild(wrapper);
+    });
+
+    triggerFadeIn(container);
 }
 
 // ---------- Revision 页面 板块二：自己写的 Crib Sheet（纯文本笔记，手动 Save） ----------
@@ -667,5 +950,235 @@ function initCribSheet() {
                 saveBtn.disabled = false;
                 saveBtn.textContent = originalText;
             });
+    });
+}
+
+// ---------- Cribsheet Builder：笔记库 + 点击加入自己的复习单 + 导出 PDF ----------
+// 笔记库不用登录也能看；点击加入/移出、导出 PDF 需要登录
+let cribsheetLibraryCache = null; // 笔记库内容不常变，缓存一份，切换标签页不用重复请求
+
+function initCribsheetBuilder() {
+    loadCribsheetLibrary();
+    loadMySelectedNotes();
+    initCribsheetOrientationToggle();
+    initCribsheetPdfExport();
+}
+
+function loadCribsheetLibrary() {
+    const container = document.getElementById('cribsheet-library-container');
+    if (!container) return;
+
+    if (cribsheetLibraryCache) {
+        renderCribsheetLibrary(cribsheetLibraryCache);
+        return;
+    }
+
+    container.innerHTML = '<div class="questions-loading">Loading note library...</div>';
+
+    fetch(`${APP_API_BASE}/api/cribsheet/notes`)
+        .then(res => res.json())
+        .then(data => {
+            cribsheetLibraryCache = data;
+            renderCribsheetLibrary(data);
+        })
+        .catch(error => {
+            console.error('Failed to load note library:', error);
+            container.innerHTML = '<div class="questions-error">Failed to load the note library. Please try refreshing the page.</div>';
+        });
+}
+
+function renderCribsheetLibrary(grouped) {
+    const container = document.getElementById('cribsheet-library-container');
+    if (!container) return;
+
+    container.innerHTML = '';
+    const categories = Object.keys(grouped);
+
+    if (categories.length === 0) {
+        container.innerHTML = '<p class="cribsheet-empty-hint">No notes in the library yet.</p>';
+        return;
+    }
+
+    categories.forEach(category => {
+        const section = document.createElement('div');
+        section.className = 'cribsheet-library-category';
+
+        const heading = document.createElement('h4');
+        heading.textContent = category;
+        section.appendChild(heading);
+
+        grouped[category].forEach(note => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'cribsheet-library-item';
+            item.dataset.noteId = note.id;
+            item.innerHTML = `<span class="cribsheet-library-item-title">${note.title}</span><i class="fa-solid fa-plus"></i>`;
+            item.title = 'Add to my Cribsheet';
+
+            item.addEventListener('click', () => {
+                if (!getToken()) return;
+                item.disabled = true;
+                toggleCribsheetNote(note.id).then(result => {
+                    item.disabled = false;
+                    if (result === null) return;
+                    if (result.selected) {
+                        addNoteToSheetView({ id: note.id, category, title: note.title, content: note.content });
+                        item.classList.add('added');
+                    }
+                });
+            });
+
+            section.appendChild(item);
+        });
+
+        container.appendChild(section);
+    });
+
+    // 加载库的时候，把已经加入过的笔记在库里也标记一下（打勾/变灰），避免重复点
+    syncLibraryItemsWithSelection();
+}
+
+function toggleCribsheetNote(noteId) {
+    const token = getToken();
+    if (!token) return Promise.resolve(null);
+
+    return fetch(`${APP_API_BASE}/api/cribsheet/notes/${noteId}/toggle`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.ok ? res.json() : null)
+        .catch(error => {
+            console.error('Failed to toggle note selection:', error);
+            return null;
+        });
+}
+
+let mySelectedNoteIds = new Set();
+
+function loadMySelectedNotes() {
+    const sheetContainer = document.getElementById('cribsheet-selected-notes');
+    if (!sheetContainer) return;
+
+    const token = getToken();
+    if (!token) {
+        mySelectedNoteIds = new Set();
+        renderEmptyHintOnly(sheetContainer);
+        return;
+    }
+
+    fetch(`${APP_API_BASE}/api/cribsheet/my-selected-notes`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.json())
+        .then(notes => {
+            mySelectedNoteIds = new Set((notes || []).map(n => n.id));
+            sheetContainer.innerHTML = '';
+
+            if (!notes || notes.length === 0) {
+                renderEmptyHintOnly(sheetContainer);
+                return;
+            }
+
+            notes.forEach(note => addNoteToSheetView(note));
+            syncLibraryItemsWithSelection();
+        })
+        .catch(error => console.error('Failed to load my selected notes:', error));
+}
+
+function renderEmptyHintOnly(sheetContainer) {
+    sheetContainer.innerHTML = '<p class="cribsheet-empty-hint" id="cribsheet-empty-hint">No notes added yet \u2014 click a note on the left to add it here.</p>';
+}
+
+// 把一条笔记加到"我的复习单"预览区里，带一个移除按钮
+function addNoteToSheetView(note) {
+    const sheetContainer = document.getElementById('cribsheet-selected-notes');
+    if (!sheetContainer) return;
+
+    const emptyHint = document.getElementById('cribsheet-empty-hint');
+    if (emptyHint) emptyHint.remove();
+
+    if (sheetContainer.querySelector(`[data-note-id="${note.id}"]`)) return; // 已经在里面了，不重复加
+
+    const card = document.createElement('div');
+    card.className = 'cribsheet-note-card';
+    card.dataset.noteId = note.id;
+    card.innerHTML = `
+        <button type="button" class="cribsheet-note-remove" title="Remove from my Cribsheet"><i class="fa-solid fa-xmark"></i></button>
+        <p class="cribsheet-note-title">${note.title}</p>
+        <p class="cribsheet-note-content">${note.content}</p>
+    `;
+
+    card.querySelector('.cribsheet-note-remove').addEventListener('click', () => {
+        toggleCribsheetNote(note.id).then(result => {
+            if (result === null) return;
+            if (!result.selected) {
+                card.remove();
+                mySelectedNoteIds.delete(note.id);
+                syncLibraryItemsWithSelection();
+                if (sheetContainer.querySelectorAll('.cribsheet-note-card').length === 0) {
+                    renderEmptyHintOnly(sheetContainer);
+                }
+            }
+        });
+    });
+
+    sheetContainer.appendChild(card);
+    mySelectedNoteIds.add(note.id);
+}
+
+// 库里已经加入过的笔记，按钮变灰 + 打勾，提示"已经在你的表里了"
+function syncLibraryItemsWithSelection() {
+    document.querySelectorAll('.cribsheet-library-item').forEach(item => {
+        const noteId = Number(item.dataset.noteId);
+        const isAdded = mySelectedNoteIds.has(noteId);
+        item.classList.toggle('added', isAdded);
+        item.innerHTML = item.querySelector('.cribsheet-library-item-title').outerHTML +
+            (isAdded ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-plus"></i>');
+    });
+}
+
+// ---------- 页面朝向切换（Portrait / Landscape）：只影响预览大小和打印时的纸张方向 ----------
+function initCribsheetOrientationToggle() {
+    const toggle = document.getElementById('cribsheet-orientation-toggle');
+    const page = document.getElementById('cribsheet-page');
+    if (!toggle || !page) return;
+    if (toggle.dataset.listenerAttached) return; // 避免切 Test 分类导致骨架重建时重复绑定
+    toggle.dataset.listenerAttached = 'true';
+
+    toggle.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            toggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const orientation = btn.dataset.orientation;
+            page.classList.toggle('landscape', orientation === 'landscape');
+            updatePrintOrientationStyle(orientation);
+        });
+    });
+}
+
+// 打印用的纸张方向（Letter portrait / landscape）没法直接用 class 选择器控制 @page，
+// 所以在打印之前动态写一个 <style> 标签，切换方向的时候同步更新它的内容
+function updatePrintOrientationStyle(orientation) {
+    let styleEl = document.getElementById('cribsheet-print-orientation-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'cribsheet-print-orientation-style';
+        document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = `@page { size: letter ${orientation}; margin: 0.6in; }`;
+}
+
+// ---------- Save as PDF：直接调用浏览器的打印功能，选"另存为 PDF"就是导出 ----------
+function initCribsheetPdfExport() {
+    const btn = document.getElementById('cribsheet-pdf-btn');
+    if (!btn) return;
+    if (btn.dataset.listenerAttached) return;
+    btn.dataset.listenerAttached = 'true';
+
+    // 默认按 portrait 初始化一次打印方向样式，不然第一次点 Save as PDF 时可能还没设置过
+    updatePrintOrientationStyle('portrait');
+
+    btn.addEventListener('click', () => {
+        window.print();
     });
 }
