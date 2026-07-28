@@ -232,6 +232,9 @@ async function loadDailySummary(token) {
                 bar.className = `weekly-bar ${weekdayClasses[index] || ''}`;
                 bar.style.height = `${heightPx}px`;
                 bar.title = formatOnlineTime(day.seconds);
+
+                const valueLabel = col.querySelector('.weekly-bar-value');
+                if (valueLabel) valueLabel.textContent = day.seconds > 0 ? formatOnlineTime(day.seconds) : '';
             });
         }
 

@@ -118,50 +118,87 @@
             <i class="fa-solid fa-arrow-left"></i> Revision Center
         </button>
         <h2>Cribsheet Builder</h2>
-        <p class="cribsheet-intro">Click notes from the library to add them to your sheet, then save it as a PDF to print before your exam.</p>
+        <p class="cribsheet-intro">Drag notes onto your page, arrange them however you like, then save it as a PDF to print before your exam.</p>
 
         <div class="cribsheet-builder-layout">
 
             <!-- 左边：笔记库 -->
             <div class="cribsheet-library-panel">
                 <h3>Note Library</h3>
+                <input type="text" id="cribsheet-library-search" class="cribsheet-library-search" placeholder="Search notes...">
                 <div id="cribsheet-library-container">
                     <!-- 分类 + 笔记，由 JS 动态插入 -->
                 </div>
+                <button type="button" id="cribsheet-add-custom-btn" class="cribsheet-add-custom-btn">
+                    <i class="fa-solid fa-plus"></i> Add Custom Note
+                </button>
             </div>
 
-            <!-- 右边：学生自己的复习单 -->
+            <!-- 右边：工具栏 + 画布 -->
             <div class="cribsheet-sheet-panel">
                 <div class="cribsheet-sheet-toolbar">
                     <div class="cribsheet-orientation-toggle" id="cribsheet-orientation-toggle">
                         <button type="button" class="active" data-orientation="portrait">Portrait</button>
                         <button type="button" data-orientation="landscape">Landscape</button>
                     </div>
-                    <button type="button" id="cribsheet-pdf-btn" class="cribsheet-pdf-btn">
-                        <i class="fa-solid fa-file-arrow-down"></i> Save as PDF
-                    </button>
+                    <div class="cribsheet-toolbar-actions">
+                        <button type="button" id="cribsheet-undo-btn" class="cribsheet-icon-btn" title="Undo"><i class="fa-solid fa-rotate-left"></i></button>
+                        <button type="button" id="cribsheet-redo-btn" class="cribsheet-icon-btn" title="Redo"><i class="fa-solid fa-rotate-right"></i></button>
+                        <button type="button" id="cribsheet-delete-selected-btn" class="cribsheet-icon-btn" title="Delete selected"><i class="fa-solid fa-trash"></i></button>
+                        <button type="button" id="cribsheet-clear-page-btn" class="cribsheet-text-btn">Clear Page</button>
+                        <button type="button" id="cribsheet-pdf-btn" class="cribsheet-pdf-btn">
+                            <i class="fa-solid fa-file-arrow-down"></i> Save as PDF
+                        </button>
+                    </div>
                 </div>
 
-                <div class="cribsheet-page" id="cribsheet-page">
-                    <div id="cribsheet-selected-notes">
-                        <!-- 已加入的笔记，由 JS 动态插入 -->
-                        <p class="cribsheet-empty-hint" id="cribsheet-empty-hint">No notes added yet — click a note on the left to add it here.</p>
+                <div class="cribsheet-page-wrap">
+                    <div class="cribsheet-page" id="cribsheet-page">
+                        <div class="grid-stack" id="cribsheet-grid"></div>
+                        <p class="cribsheet-empty-hint" id="cribsheet-empty-hint">No notes added yet — click a note on the left, or drag it onto the page.</p>
                     </div>
+                </div>
 
-                    <div class="cribsheet-my-notes-section">
-                        <div class="crib-sheet-header">
-                            <h4>My Notes</h4>
-                            <div class="crib-sheet-actions">
-                                <span class="crib-sheet-status" id="crib-sheet-status"></span>
-                                <button id="crib-sheet-save-btn" class="crib-sheet-save-btn">Save</button>
-                            </div>
+                <!-- 保留原来的自由文本笔记（阶段1就有的功能） -->
+                <div class="cribsheet-my-notes-section">
+                    <div class="crib-sheet-header">
+                        <h4>My Notes</h4>
+                        <div class="crib-sheet-actions">
+                            <span class="crib-sheet-status" id="crib-sheet-status"></span>
+                            <button id="crib-sheet-save-btn" class="crib-sheet-save-btn">Save</button>
                         </div>
-                        <textarea id="crib-sheet-textarea" class="crib-sheet-textarea"
-                            placeholder="Write your own notes, key formulas, or reminders here — whatever helps you review before a test."></textarea>
                     </div>
+                    <textarea id="crib-sheet-textarea" class="crib-sheet-textarea"
+                        placeholder="Write your own notes, key formulas, or reminders here — whatever helps you review before a test."></textarea>
                 </div>
             </div>
 
+        </div>
+    </div>
+
+    <!-- 加笔记的时候选尺寸用的弹窗（引用笔记库笔记 / 自定义笔记都会用到这个） -->
+    <div class="cribsheet-modal-backdrop" id="cribsheet-size-modal-backdrop" style="display: none;">
+        <div class="cribsheet-modal">
+            <h3 id="cribsheet-size-modal-title">Choose a size</h3>
+            <div id="cribsheet-size-options" class="cribsheet-size-options">
+                <!-- 尺寸选项由 JS 动态插入 -->
+            </div>
+            <button type="button" id="cribsheet-size-modal-cancel" class="cribsheet-modal-cancel-btn">Cancel</button>
+        </div>
+    </div>
+
+    <!-- 自定义笔记的输入弹窗 -->
+    <div class="cribsheet-modal-backdrop" id="cribsheet-custom-modal-backdrop" style="display: none;">
+        <div class="cribsheet-modal">
+            <h3>Add Custom Note</h3>
+            <label for="cribsheet-custom-title-input">Title</label>
+            <input type="text" id="cribsheet-custom-title-input" placeholder="e.g. My own formula">
+            <label for="cribsheet-custom-content-input">Content</label>
+            <textarea id="cribsheet-custom-content-input" rows="4" placeholder="Write whatever you want here"></textarea>
+            <div class="cribsheet-modal-actions">
+                <button type="button" id="cribsheet-custom-modal-cancel" class="cribsheet-modal-cancel-btn">Cancel</button>
+                <button type="button" id="cribsheet-custom-modal-next" class="cribsheet-modal-next-btn">Next: Choose Size</button>
+            </div>
         </div>
     </div>
 

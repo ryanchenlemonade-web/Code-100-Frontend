@@ -427,7 +427,7 @@ body {
 }
 
 .weekly-header {
-    margin-bottom: 14px;
+    margin-bottom: 32px;
 }
 
 .weekly-chart {
@@ -435,7 +435,7 @@ body {
     align-items: flex-start;
     justify-content: space-between;
     gap: 10px;
-    height: 96px;
+    height: 122px;
 }
 
 .weekly-bar-col {
@@ -445,6 +445,14 @@ body {
     align-items: center;
     gap: 8px;
     height: 100%;
+}
+
+.weekly-bar-value {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--weak-color, #999);
+    line-height: 1;
+    min-height: 0.72rem;
 }
 
 /* 每一栏的"轨道"：固定高度的浅灰底槽，哪怕当天是 0 也能看到一条完整的柱子外框，
@@ -531,7 +539,7 @@ body {
 
 .weekly-day {
     font-size: 0.72rem;
-    color: var(--weak-color);
+    color: var(--icon-color, #000);
     font-weight: 600;
 }
 

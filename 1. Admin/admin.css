@@ -99,8 +99,6 @@ textarea {
 textarea {
     font-family: Consolas, Monaco, 'Courier New', monospace;
     resize: vertical;
-    /* 在文本框内部滚动到顶/底之后，继续滚动不会带动整个页面一起滚 */
-    overscroll-behavior: contain;
 }
 
 input:focus,
@@ -333,4 +331,160 @@ td.description-cell {
 @keyframes toastIn {
     from { opacity: 0; transform: translateX(20px); }
     to { opacity: 1; transform: translateX(0); }
+}
+/* ---------- 密钥门禁 ---------- */
+#admin-key-gate {
+    position: fixed;
+    inset: 0;
+    background: hsl(220, 25%, 96%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+}
+
+.admin-key-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+    padding: 40px;
+    width: 320px;
+    text-align: center;
+}
+
+.admin-key-card h1 {
+    margin: 0 0 6px;
+    font-size: 1.4rem;
+}
+
+.admin-key-card p {
+    margin: 0 0 20px;
+    color: var(--admin-weak);
+    font-size: 0.9rem;
+}
+
+.admin-key-card input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    margin-bottom: 14px;
+    box-sizing: border-box;
+}
+
+.admin-key-card button {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: var(--admin-blue);
+    color: #ffffff;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.admin-key-card button:hover {
+    background: hsl(212, 100%, 38%);
+}
+
+.admin-key-error {
+    color: var(--admin-danger);
+    font-size: 0.82rem;
+    margin: 12px 0 0;
+    min-height: 1.2em;
+}
+
+/* ---------- 整体布局：侧边栏 + 内容区 ---------- */
+#admin-app {
+    display: flex;
+    min-height: 100vh;
+}
+
+.admin-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    background: #ffffff;
+    border-right: 1px solid var(--admin-border);
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.admin-sidebar-title {
+    font-size: 1rem;
+    margin: 0 8px 16px;
+}
+
+.admin-nav-item {
+    text-align: left;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 8px;
+    background: none;
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: var(--admin-text);
+    cursor: pointer;
+}
+
+.admin-nav-item:hover {
+    background: hsl(0, 0%, 95%);
+}
+
+.admin-nav-item.active {
+    background: hsl(212, 100%, 94%);
+    color: var(--admin-blue);
+    font-weight: 700;
+}
+
+.admin-content {
+    flex: 1;
+    padding: 32px 40px 80px;
+    max-width: 960px;
+}
+
+.admin-section {
+    display: none;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.admin-section.active {
+    display: flex;
+}
+
+.admin-section-header h1 {
+    margin: 0 0 4px;
+    font-size: 1.7rem;
+}
+
+.admin-section-header .subtitle {
+    margin: 0;
+    color: var(--admin-weak);
+}
+
+.muted {
+    color: var(--admin-weak);
+    font-style: italic;
+}
+
+@media (max-width: 800px) {
+    #admin-app {
+        flex-direction: column;
+    }
+    .admin-sidebar {
+        width: 100%;
+        flex-direction: row;
+        overflow-x: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--admin-border);
+    }
+    .admin-sidebar-title {
+        display: none;
+    }
+    .admin-content {
+        padding: 20px;
+    }
 }

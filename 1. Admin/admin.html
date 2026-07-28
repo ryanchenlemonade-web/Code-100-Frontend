@@ -3,126 +3,292 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Developer's Tool</title>
+    <title>Admin — Code 100</title>
     <link rel="stylesheet" href="admin.css">
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 
-    <header class="admin-header">
-        <h1>Developer's Tool</h1>
-        <p class="subtitle">Add, edit, delete, and search test questions</p>
-    </header>
+    <!-- 密钥门禁：没输对密钥之前，看不到任何 Admin 内容 -->
+    <div id="admin-key-gate">
+        <div class="admin-key-card">
+            <h1>Admin</h1>
+            <p>Enter the admin key to continue.</p>
+            <input type="password" id="admin-key-input" placeholder="Admin key" autocomplete="off">
+            <button type="button" id="admin-key-submit">Enter</button>
+            <p id="admin-key-error" class="admin-key-error"></p>
+        </div>
+    </div>
 
-    <main class="admin-main">
+    <div id="admin-app" style="display: none;">
 
-        <!-- 新增 / 编辑 表单：同一个表单复用，编辑时用 question-id 这个隐藏字段区分 -->
-        <section class="card">
-            <h2 id="form-title">Add New Question</h2>
+        <nav class="admin-sidebar">
+            <h2 class="admin-sidebar-title">Code 100 Admin</h2>
+            <button type="button" class="admin-nav-item active" data-section="questions">Question Bank</button>
+            <button type="button" class="admin-nav-item" data-section="cribsheet">Cribsheet Library</button>
+            <button type="button" class="admin-nav-item" data-section="note-sizes">Note Sizes</button>
+            <button type="button" class="admin-nav-item" data-section="users">Users</button>
+        </nav>
 
-            <!-- novalidate：关掉浏览器自带的校验提示框，必填校验改由 admin.js 手动做（描红代替文字提示） -->
-            <form id="question-form" novalidate>
-                <input type="hidden" id="question-id" value="">
+        <main class="admin-content">
 
-                <div class="form-row form-row-inline">
-                    <div>
-                        <label for="paper-category-select">Test</label>
-                        <select id="paper-category-select">
-                            <option value="">Loading...</option>
-                        </select>
+            <!-- ================= Question Bank ================= -->
+            <section class="admin-section active" id="section-questions">
+                <header class="admin-section-header">
+                    <h1>Question Bank</h1>
+                    <p class="subtitle">Add, edit, delete, and search test questions</p>
+                </header>
+
+                <section class="card">
+                    <h2 id="form-title">Add New Question</h2>
+
+                    <form id="question-form" novalidate>
+                        <input type="hidden" id="question-id" value="">
+
+                        <div class="form-row form-row-inline">
+                            <div>
+                                <label for="paper-category-select">Test</label>
+                                <select id="paper-category-select">
+                                    <option value="">Loading...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="paper-year-input">Year</label>
+                                <input type="text" inputmode="numeric" pattern="[0-9]*" id="paper-year-input" placeholder="e.g. 2025">
+                            </div>
+                        </div>
+
+                        <div class="form-row form-row-inline">
+                            <div>
+                                <label for="question-number-input">Question Number</label>
+                                <input type="number" id="question-number-input" min="1">
+                            </div>
+                            <div>
+                                <label for="subquestion-number-input">Subquestion (a / b / c — leave blank if none)</label>
+                                <input type="text" id="subquestion-number-input" maxlength="5">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="question-category-select">Question Type</label>
+                            <select id="question-category-select">
+                                <option value="one-liners">One-Liners</option>
+                                <option value="debugging">Debugging</option>
+                                <option value="get_output">Output Prediction</option>
+                                <option value="half-program">Half Program</option>
+                                <option value="full-program">Full Program</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="question-topic-input">Topic (optional, e.g. "Loops", "Recursion")</label>
+                            <input type="text" id="question-topic-input" placeholder="e.g. Loops">
+                        </div>
+
+                        <div class="form-row scan-row">
+                            <label for="scan-image-input">Scan Question from Image (optional)</label>
+                            <div class="scan-controls">
+                                <input type="file" id="scan-image-input" accept="image/*">
+                                <button type="button" id="scan-image-btn" class="scan-btn">Scan → Fill Description</button>
+                            </div>
+                            <span id="scan-status" class="scan-status"></span>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="question-description-input">Question Description</label>
+                            <textarea id="question-description-input" rows="7"></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="question-solution-input">Solution</label>
+                            <textarea id="question-solution-input" rows="7"></textarea>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" id="submit-btn">Add Question</button>
+                            <button type="button" id="cancel-edit-btn" style="display: none;">Cancel Edit</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="card">
+                    <h2>All Questions</h2>
+
+                    <div class="filter-row">
+                        <div>
+                            <label for="filter-paper-select">Paper</label>
+                            <select id="filter-paper-select">
+                                <option value="">All Papers</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="filter-category-select">Type</label>
+                            <select id="filter-category-select">
+                                <option value="">All Types</option>
+                                <option value="one-liners">One-Liners</option>
+                                <option value="debugging">Debugging</option>
+                                <option value="get_output">Output Prediction</option>
+                                <option value="half-program">Half Program</option>
+                                <option value="full-program">Full Program</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-search-wrap">
+                            <label for="filter-search-input">Search Description</label>
+                            <input type="text" id="filter-search-input" placeholder="Type to search...">
+                        </div>
                     </div>
-                    <div>
-                        <label for="paper-year-input">Year</label>
-                        <input type="text" inputmode="numeric" pattern="[0-9]*" id="paper-year-input" placeholder="e.g. 2025">
+
+                    <div id="questions-count" class="questions-count"></div>
+
+                    <div id="questions-folders" class="table-wrap">
+                        <!-- 由 JS 动态填充，每个 Test 分类一个可折叠的 folder -->
                     </div>
-                </div>
+                </section>
+            </section>
 
-                <div class="form-row form-row-inline">
-                    <div>
-                        <label for="question-number-input">Question Number</label>
-                        <input type="number" id="question-number-input" min="1">
+            <!-- ================= Cribsheet Library ================= -->
+            <section class="admin-section" id="section-cribsheet">
+                <header class="admin-section-header">
+                    <h1>Cribsheet Library</h1>
+                    <p class="subtitle">Manage the notes students can add to their Cribsheet Builder</p>
+                </header>
+
+                <section class="card">
+                    <h2 id="note-form-title">Add New Note</h2>
+
+                    <form id="note-form" novalidate>
+                        <input type="hidden" id="note-id" value="">
+
+                        <div class="form-row form-row-inline">
+                            <div>
+                                <label for="note-category-input">Category</label>
+                                <input type="text" id="note-category-input" placeholder="e.g. Data Types">
+                            </div>
+                            <div>
+                                <label for="note-title-input">Title</label>
+                                <input type="text" id="note-title-input" placeholder="e.g. int">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="note-content-input">Content</label>
+                            <textarea id="note-content-input" rows="4" placeholder="e.g. Integer data type used to store whole numbers."></textarea>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" id="note-submit-btn">Add Note</button>
+                            <button type="button" id="note-cancel-edit-btn" style="display: none;">Cancel Edit</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="card">
+                    <h2>All Notes</h2>
+                    <div id="notes-count" class="questions-count"></div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Category</th>
+                                    <th>Title</th>
+                                    <th>Content</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="notes-table-body"></tbody>
+                        </table>
                     </div>
-                    <div>
-                        <label for="subquestion-number-input">Subquestion (a / b / c — leave blank if none)</label>
-                        <input type="text" id="subquestion-number-input" maxlength="5">
+                </section>
+            </section>
+
+            <!-- ================= Note Sizes ================= -->
+            <section class="admin-section" id="section-note-sizes">
+                <header class="admin-section-header">
+                    <h1>Note Sizes</h1>
+                    <p class="subtitle">Fixed grid sizes students can choose from when adding a note to their Cribsheet (grid is 12 columns wide)</p>
+                </header>
+
+                <section class="card">
+                    <h2>Add New Size</h2>
+                    <form id="note-size-form" novalidate>
+                        <div class="form-row form-row-inline">
+                            <div>
+                                <label for="note-size-name-input">Name</label>
+                                <input type="text" id="note-size-name-input" placeholder="e.g. Small">
+                            </div>
+                            <div>
+                                <label for="note-size-cols-input">Columns (1-12)</label>
+                                <input type="number" id="note-size-cols-input" min="1" max="12">
+                            </div>
+                            <div>
+                                <label for="note-size-rows-input">Rows</label>
+                                <input type="number" id="note-size-rows-input" min="1">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" id="note-size-submit-btn">Add Size</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="card">
+                    <h2>All Sizes</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Columns</th>
+                                    <th>Rows</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="note-sizes-table-body"></tbody>
+                        </table>
                     </div>
-                </div>
+                </section>
+            </section>
 
-                <div class="form-row">
-                    <label for="question-category-select">Question Type</label>
-                    <select id="question-category-select">
-                        <option value="one-liners">One-Liners</option>
-                        <option value="debugging">Debugging</option>
-                        <option value="get_output">Get-Output</option>
-                        <option value="half-program">Half-Program</option>
-                        <option value="full-program">Full-Program</option>
-                    </select>
-                </div>
+            <!-- ================= Users ================= -->
+            <section class="admin-section" id="section-users">
+                <header class="admin-section-header">
+                    <h1>Users</h1>
+                    <p class="subtitle">View, search, edit, and delete student accounts</p>
+                </header>
 
-                <div class="form-row scan-row">
-                    <label for="scan-image-input">Scan Question from Image (optional)</label>
-                    <div class="scan-controls">
-                        <input type="file" id="scan-image-input" accept="image/*">
-                        <button type="button" id="scan-image-btn" class="scan-btn">Scan → Fill Description</button>
+                <section class="card">
+                    <div class="filter-row">
+                        <div class="filter-search-wrap">
+                            <label for="user-search-input">Search (username or email)</label>
+                            <input type="text" id="user-search-input" placeholder="Type to search...">
+                        </div>
                     </div>
-                    <span id="scan-status" class="scan-status"></span>
-                </div>
 
-                <div class="form-row">
-                    <label for="question-description-input">Question Description</label>
-                    <textarea id="question-description-input" rows="7"></textarea>
-                </div>
+                    <div id="users-count" class="questions-count"></div>
 
-                <div class="form-row">
-                    <label for="question-solution-input">Solution</label>
-                    <textarea id="question-solution-input" rows="7"></textarea>
-                </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Registered</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
 
-                <div class="form-actions">
-                    <button type="submit" id="submit-btn">Add Question</button>
-                    <button type="button" id="cancel-edit-btn" style="display: none;">Cancel Edit</button>
-                </div>
-            </form>
-        </section>
-
-        <!-- 查询 / 列表 -->
-        <section class="card">
-            <h2>All Questions</h2>
-
-            <div class="filter-row">
-                <div>
-                    <label for="filter-paper-select">Paper</label>
-                    <select id="filter-paper-select">
-                        <option value="">All Papers</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label for="filter-category-select">Type</label>
-                    <select id="filter-category-select">
-                        <option value="">All Types</option>
-                        <option value="one-liners">One-Liners</option>
-                        <option value="debugging">Debugging</option>
-                        <option value="get_output">Get-Output</option>
-                        <option value="half-program">Half-Program</option>
-                        <option value="full-program">Full-Program</option>
-                    </select>
-                </div>
-
-                <div class="filter-search-wrap">
-                    <label for="filter-search-input">Search Description</label>
-                    <input type="text" id="filter-search-input" placeholder="Type to search...">
-                </div>
-            </div>
-
-            <div id="questions-count" class="questions-count"></div>
-
-            <div id="questions-folders" class="table-wrap">
-                <!-- 由 JS 动态填充，每个 Test 分类一个可折叠的 folder -->
-            </div>
-        </section>
-
-    </main>
+        </main>
+    </div>
 
     <div id="toast-container"></div>
 
