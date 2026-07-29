@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="testing-engine.css">
     <link rel="stylesheet" href="../../../0. Shared/auth.css">
     <link rel="icon" type="image/png" href="../../../0. images/Code 100.png">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="../../../0. Shared/fontawesome/css/all.min.css">
     <!-- GridStack.js：Cribsheet Builder 的拖拽网格画布用 -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.1.2/dist/gridstack.min.css">
     <script src="https://cdn.jsdelivr.net/npm/gridstack@10.1.2/dist/gridstack-all.js"></script>
@@ -33,6 +33,14 @@
 
     <div class="nav-bar">
 
+        <!-- 侧边栏折叠按钮。放在导航栏里而不是侧边栏里，是因为侧边栏收起之后
+             按钮要是在里面就跟着消失了，没法再展开。
+             导航栏左边本来就是一片空白（Test 1-4 是居中排的），正好放它。 -->
+        <button type="button" id="sidebar-toggle" class="sidebar-toggle"
+                aria-label="Toggle sidebar" aria-expanded="true" title="Hide sidebar">
+            <i class="fa-solid fa-table-columns"></i>
+        </button>
+
         <a href="#" class="bar-items active" id="test1">Test 1</a>
         <a href="#" class="bar-items" id="test2">Test 2</a>
         <a href="#" class="bar-items" id="test3">Test 3</a>
@@ -46,17 +54,29 @@
         <div class="sidebar">
 
             <a href="#" class="sidebar-item active" id="practice">
-                <span class="icon">📝</span>
+                <i class="fa-regular fa-pen-to-square icon"></i>
                 <span>Practice</span>
             </a>
             <a href="#" class="sidebar-item" id="testing">
-                <span class="icon">⏱️</span>
+                <i class="fa-regular fa-clock icon"></i>
                 <span>Examination</span>
             </a>
             <a href="#" class="sidebar-item" id="revision">
-                <span class="icon">🔍</span>
+                <i class="fa-regular fa-bookmark icon"></i>
                 <span>Revision</span>
             </a>
+
+            <!-- ⚠️ 进度卡：目前只是毛胚，没有接任何数据，也没有任何逻辑。
+                 虚线边框是刻意的，一眼能看出这块还没做完。
+                 这里刻意不放假数字（"12 notes · 60%" 那种）——项目从头到尾坚持
+                 "没有真实数据支撑就做成诚实的占位"，编个好看的数字糊弄反而更糟。
+                 以后接真实数据时：把 .sidebar-progress 的虚线换成实线，
+                 把下面这行 placeholder 换成真正的内容。 -->
+            <div class="sidebar-progress">
+                <span class="sidebar-progress-label">Progress</span>
+                <p class="sidebar-progress-placeholder">Not wired up yet</p>
+            </div>
+
         </div>
 
 
@@ -76,6 +96,7 @@
 
     <script src="../../../0. Shared/config.js"></script>
     <script src="testing-engine.js"></script>
+    <script src="cribsheet-builder.js"></script> 
     <script src="cs1_index.js"></script>
     <script src="../../../0. Shared/auth.js"></script>
 </body>

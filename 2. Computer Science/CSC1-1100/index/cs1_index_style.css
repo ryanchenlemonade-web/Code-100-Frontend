@@ -6,8 +6,18 @@
     --icon-color: hsl(0, 0%, 15%);
     --blue: #0066cc;
     --weak-color: hsl(0, 0%,45%);
-    --logo-height: 59px;
-    --logo-width: 60px;
+    --logo-height: 49px;
+    --logo-width: 50px;
+
+    /* 顶部导航栏的高度。侧边栏要贴在它下面，所以两边共用这一个值。
+       导航栏改了 padding 或字号，这里跟着改，侧边栏会自动对齐 */
+    --nav-height: 52px;
+
+    /* 侧边栏宽度。调这一个数就行，.sidebar 用的是这个变量。
+       ⚠️ 注意：导航栏的 Test 1-4 是在整个视口里居中的，它的左边缘位置
+       会随窗口宽度浮动，所以这个值只能在某一个特定窗口宽度下跟它对齐，
+       窗口一拉伸就又错开了。要彻底对齐得让导航栏也留出等宽的一块。 */
+    --sidebar-width: 213px;
 
     /* 题目区块相关变量（testing-engine.css 会用到，放在这里统一管理设计token） */
     --code-bg: hsl(0, 0%, 96%);
@@ -34,9 +44,9 @@ body{
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding-top: 32px;
-    margin-bottom: 24px;
+    gap: 6px;
+    padding-top: 24px;
+    margin-bottom: 18px;
 }
 
 .title-row {
@@ -48,9 +58,11 @@ body{
 
 #logo{
     display: flex;
-    margin-top: 5px;
+    margin-top: 4px;
     width: var(--logo-width);
-    height: var(var(--logo-height));
+    /* 原来这里写的是 var(var(--logo-height))，var 套了两层是无效 CSS，
+       height 实际上一直没生效（靠图片自身比例撑着） */
+    height: var(--logo-height);
 }
 
 #web-header{
@@ -61,7 +73,7 @@ body{
 
 #web-header h1{
     text-align: center;
-    font-size: 3rem;
+    font-size: 2.4rem;
     color: black;
     margin: 0;
 }
@@ -70,7 +82,7 @@ body{
 
 @media (max-width: 1170px) {  /* 根据屏幕大小来调整字体大小 */
     #web-header h1{
-        font-size: 2.5rem;
+        font-size: 2.1rem;
     }
 }
 
@@ -104,7 +116,12 @@ body{
     top: 0;  /* 吸顶位置 */
     text-align: center;
     background-color: white;
-    padding: 15px;
+    /* 高度固定下来，侧边栏要贴在它下面，需要一个可靠的基准。
+       上下 padding 去掉，改用 line-height 撑高，这样 --nav-height 说多高就是多高 */
+    height: var(--nav-height);
+    line-height: var(--nav-height);
+
+    padding: 0;
     box-shadow: 0 0px 8px rgba(0, 0, 0, 0.05);       /* 轻微阴影，制造层次感 */
     font-size: 0;   /* 消除子元素之间因为换行产生的空隙 */
     z-index: 100;  /* z-index 越大，涂层越高 */
@@ -113,8 +130,10 @@ body{
 .bar-items{
     text-decoration: none;
     color: black;
-    padding: 15px 120px;   /* 从 80px 加大到 120px，间距更宽 */
-    font-size: 1.1rem;    /* 字号稍微加大 */
+    display: inline-block;
+    line-height: var(--nav-height);
+    padding: 0 110px;
+    font-size: 1.05rem;
     transition: color 0.2s ease;
 }
 
@@ -148,7 +167,7 @@ body{
 
 @media (max-width: 1170px) {
     .bar-items {
-        padding: 15px 60px;   /* 小屏幕也同步加宽一点，从40px改成60px */
+        padding: 0 55px;
     }
 }
 
@@ -159,38 +178,47 @@ body{
 .main-layout {
     display: flex;
     align-items: flex-start;   /* sidebar 和 content 顶部对齐 */
-    gap: 24px;                  /* 两者之间的间距 */
-    flex: 1 0 auto;             /* 撑满剩余空间，把 footer 推到窗口底部（内容多的时候会被正常推下去，需要滚动） */
+    /* gap 去掉了：侧边栏自己带右边线，内容区自己带左内距，
+       两者之间不该再有一段透出页面背景的缝——那正是「浮动卡片」的观感来源 */
+    flex: 1 0 auto;             /* 撑满剩余空间，把 footer 推到窗口底部 */
 }
 
 
 
 
 /* 侧边栏 */
+/* 应用外壳里的常驻导航，不是一张浮在页面上的卡片。
+   所以：没有圆角、没有投影、没有外边距，只有一条右边线把它和内容分开，
+   高度顶满视口——从视觉上它是页面结构的一部分，而不是摆在页面上的一个部件。 */
 .sidebar {
-    background-color: hsl(140, 40%, 85%);
-    width: 260px;
-    flex-shrink: 0;       /* 防止被 content 挤压变形 */
-    /* 不再是 min-height: 100vh，让高度自动贴合内容 */
-    padding: 20px;
+    width: var(--sidebar-width);
+    flex-shrink: 0;
+    padding: 14px 10px;
     display: flex;
     flex-direction: column;
     gap: 8px;
     box-sizing: border-box;
-    border-radius: 24px;          /* 四角圆润，悬浮卡片的关键 */
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);  /* 阴影制造"浮起来"的感觉 */
-    margin: 24px;     /* 卡片跟页面边缘留点距离，不贴边 */
-    margin-top: 65px;
 
-    position: sticky;    /* 吸顶 */
-    top: 117px;  /* 保持间距一致 */
-    z-index: 90;  /* z-index 越大，涂层越高 */
+    /* 纯色底，不做渐变。颜色由 JS 按 Test 分类写进 --sidebar-tint
+       （绿 → 黄 → 橙 → 红，跟导航栏的色阶一致）。
+       没拿到变量之前用浅白兜底，避免首屏闪一下透明 */
+    background-color: var(--sidebar-tint, hsl(0, 0%, 98%));
+    border-right: 1px solid hsla(220, 20%, 84%, 0.9);
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
 
-    transition: background-color 0.4s ease,
-                opacity 0.4s ease, transform 0.4s ease, width 0.4s ease,
-                margin 0.4s ease, padding 0.4s ease;   /* 颜色切换 + 考试专注模式收起，都走这里的过渡 */
+    /* 贴在导航栏正下方，并一直顶到视口底部。
+       内容很长的时候导航会跟着停在原地，不会滚走 */
+    position: sticky;
+    top: var(--nav-height);
+    height: calc(100vh - var(--nav-height));
+    z-index: 90;
 
-    /* 淡入效果 */
+    transition: opacity 0.4s ease, transform 0.4s ease, width 0.4s ease,
+                margin 0.4s ease, padding 0.4s ease, border-width 0.4s ease,
+                background-color 0.4s ease;
+
     opacity: 0;
     animation: fadeIn 0.9s ease forwards;
 }
@@ -207,44 +235,100 @@ body{
 }
 
 .sidebar-item {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 14px 16px;
-    border-radius: 14px;
+    gap: 12px;
+    padding: 11px 11px;
+    border-radius: 7px;
     text-decoration: none;
-    color: var(--icon-color);
-    font-size: 1.2rem;
-    transition: background-color 0.2s ease, transform 0.1s ease;
+    color: hsl(220, 10%, 38%);
+    font-size: 1.15rem;
+    font-weight: 500;
+    transition: background-color 0.16s ease, color 0.16s ease;
 }
 
+/* 图标定宽，三行的文字才会左对齐——图标本身宽度不一，不定宽会参差 */
 .sidebar-item .icon {
-    font-size: 1.3rem;
+    width: 20px;
+    text-align: center;
+    font-size: 1.1rem;
     line-height: 1;
+    color: hsl(220, 8%, 56%);
+    transition: color 0.16s ease;
 }
 
 .sidebar-item:hover {
-    background-color: hsl(0, 0%, 100%, 0.5);
+    background-color: hsla(220, 30%, 45%, 0.06);
+    color: hsl(220, 20%, 18%);
 }
 
-.sidebar-item.active {
-    background-color: hsl(0, 0%, 100%, 0.7);
+.sidebar-item:hover .icon {
+    color: hsl(220, 15%, 35%);
 }
 
+/* 选中项：一层很淡的底 + 左边一道细条 + 字重加一档。
+   没有白卡、没有投影——那是「浮起来的部件」的语言，不是导航项的语言 */
+.sidebar-item.active,
 .sidebar-item.active:hover {
-    background-color: hsl(0, 0%, 100%, 0.7);
+    background-color: hsla(214, 60%, 50%, 0.09);
+    color: hsl(220, 25%, 14%);
+    font-weight: 600;
 }
 
+.sidebar-item.active .icon {
+    color: var(--blue);
+}
 
+.sidebar-item.active::before {
+    content: '';
+    position: absolute;
+    left: -10px;          /* 顶到侧边栏的内边距外沿，贴着最左边 */
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 22px;
+    border-radius: 0 999px 999px 0;
+    background: var(--blue);
+}
 
+/* ---------- 底部进度卡：目前只是毛胚 ---------- */
+/* ⚠️ 还没有接任何数据，就是个占位。虚线边框是刻意的，一眼能看出「这块还没做」。
+   这里不放假数字——项目从头到尾坚持「没有真实数据支撑就做成诚实的占位」。
+   以后接上真实数据时，把虚线换成实线、把 placeholder 那行换成内容即可。
+   margin-top: auto 把它压到侧边栏底部，靠的是上面那个 height: calc(100vh - ...) */
+.sidebar-progress {
+    margin-top: auto;
+    padding: 10px 11px;
+    border: 1px dashed hsla(220, 22%, 78%, 0.9);
+    border-radius: 8px;
+}
+
+.sidebar-progress-label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.66rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: hsl(220, 8%, 56%);
+}
+
+.sidebar-progress-placeholder {
+    margin: 0;
+    font-size: 0.74rem;
+    line-height: 1.45;
+    color: hsl(220, 8%, 62%);
+}
 
 
 /* 具体内容 */
 .content {
     flex: 1;               /* 占满 sidebar 之外的剩余空间 */
-    padding-right: 36px;  /* 右边留白 */
-    padding-left: 50px;  /* 左边留白 */
-    margin-top: 65px;     /* 跟 sidebar 顶部对齐 */
+    min-width: 0;          /* flex 子项默认不会小于内容宽度，不加这行长内容会把布局撑破 */
+    padding: 22px 36px 0 32px;
+    margin-top: 0;
+    transition: padding-left 0.4s ease;         /* 原来这里有 65px，是为了跟浮动卡片式的 sidebar 对齐，现在不需要了 */
 
     animation: contentFadeIn 0.9s ease forwards;
 }
@@ -275,6 +359,64 @@ body{
 }
 
 
+/* ---------- 侧边栏折叠 ---------- */
+/* 按钮是 fixed 定位、常驻在同一个位置的：收起之后侧边栏宽度为 0，
+   按钮要是放在里面就跟着消失了，就没法再展开。
+   放在固定位置还有个好处——展开和收起时按钮不动，点起来不用重新找 */
+/* 按钮在导航栏内部，靠 absolute 定位到左边那片空白上。
+   .nav-bar 是 sticky（已经是定位元素），所以这里的 absolute 就是相对它算的。
+   放在导航栏里而不是侧边栏里：侧边栏收起之后，按钮要是在里面就跟着消失了。
+   另外 .nav-bar 有 font-size: 0（消除内联元素间隙用的），
+   所以这里必须自己声明字号，不然图标会变成 0 大小看不见 */
+.sidebar-toggle {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    border-radius: 7px;
+    background: none;
+    color: hsl(220, 10%, 45%);
+    cursor: pointer;
+    font-size: 0.95rem;
+    line-height: 1;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-toggle:hover {
+    background-color: hsla(220, 30%, 45%, 0.1);
+    color: hsl(220, 20%, 18%);
+}
+
+.sidebar-toggle:active {
+    /* translateY 要带上——只写 scale 的话会把上面的垂直居中盖掉，按下去按钮会跳 */
+    transform: translateY(-50%) scale(0.94);
+}
+
+/* 收起状态。宽度和内边距一起归零，配合 overflow: hidden 把内容裁掉。
+   这里不动 opacity——.sidebar 上有个 animation-fill-mode: forwards 的淡入动画，
+   动画的最终值优先级高于普通声明，写 opacity 会被它盖掉不生效 */
+body.sidebar-collapsed .sidebar {
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border-right-width: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* 侧边栏收起后左边少了一整块，内容稍微往里收一点，不要贴着窗口边缘 */
+body.sidebar-collapsed .content {
+    padding-left: 40px;
+}
+
 /* 考试专注模式：sidebar 和 navbar 平滑收起，而不是瞬间消失
    （由 testing-engine.js 里的 enterExamFocusMode / exitExamFocusMode 触发） */
 
@@ -285,6 +427,7 @@ body{
     padding: 0;
     margin-left: 0;
     margin-right: 0;
+    border-right-width: 0;   /* 边线也要收掉，不然收起后会留下一条竖线 */
     overflow: hidden;
     pointer-events: none;   /* 收起过程中不能被点到 */
 }
@@ -306,7 +449,7 @@ body{
 
 /* sidebar 收起后，内容区左边距加宽一点，不要紧贴页面边缘 */
 body.exam-focus-mode .content {
-    padding-left: 115px;
+    padding-left: 90px;
     transition: padding-left 0.4s ease;
 }
 

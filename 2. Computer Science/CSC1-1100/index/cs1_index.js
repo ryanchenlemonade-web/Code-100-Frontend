@@ -8,12 +8,22 @@ const navBar = document.querySelector('.nav-bar');
 const footerContainer = document.getElementById('footer-container');
 
 // 每个 Test 对应的颜色，跟navbar配色保持一致
-const colorMap = {
-    'test1': 'hsl(140, 40%, 85%)',
-    'test2': 'hsl(45, 85%, 84%)',
-    'test3': 'hsl(28, 85%, 83%)',   
-    'final': 'hsl(0, 60%, 83%)'
+// 侧边栏底色，按 Test 分类联动（绿 → 黄 → 橙 → 红，跟导航栏的色阶一致）。
+// 用 CSS 变量而不是直接设 backgroundColor：背景的其他部分（透明度、边线）
+// 归 CSS 管，这里只提供颜色，两边不打架。
+// 亮度刻意定在 96%，比导航栏激活态（88-90%）明显淡一档。
+// 两边同一档的话，侧边栏会跟导航栏抢注意力，而它只是背景
+const sidebarTintMap = {
+    'test1': 'hsl(140, 42%, 96%)',
+    'test2': 'hsl(45, 80%, 96%)',
+    'test3': 'hsl(28, 80%, 96%)',
+    'final': 'hsl(0, 58%, 96.5%)'
 };
+
+function applySidebarTint(navId) {
+    const tint = sidebarTintMap[navId];
+    if (tint) sidebar.style.setProperty('--sidebar-tint', tint);
+}
 
 // nav 按钮 id 对应数据库里的 paper_category（必须跟 Test_Papers 表里的值完全一致）
 // 以后新增分类（比如 Test 4），只需要在这里加一行映射即可，不需要新建任何文件
@@ -48,6 +58,71 @@ function fetchPapersGrouped() {
         .then(data => { papersByCategory = data; })
         .catch(error => console.error('Failed to Obtain Papers:', error));
 }
+
+// 切换 Test 分类或者左边的模式时，把页面滚回顶部。
+//
+// 不这么做的话：在长列表里滚到很深的位置再切一下，新内容是从半截开始显示的——
+// 因为滚动位置没变，而新内容的开头在屏幕上方之外。
+//
+// 用瞬时跳转而不是平滑滚动：从很深的位置平滑滚回顶部要花上一两秒，
+// 那段时间内容已经换了，看着像卡住。这里的语义就是"翻到新的一页"，
+// 瞬时才对得上。
+function scrollPageToTop() {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+
+// ---------- 侧边栏折叠 ----------
+// 状态规则：刷新页面保持不变，但从别的页面点进来时一律回到展开。
+//
+// 理由是这两件事的性质不同：刷新是「还在原来那次使用里」，收起来是刚做的选择，
+// 弹回去会很烦；而从首页点进来是一次新的开始，这时候把导航亮出来更合适——
+// 尤其是收起状态下侧边栏完全不可见，新进来的人可能找不到它在哪。
+//
+// 用 sessionStorage 而不是 localStorage：这个状态本来就只该在当前标签页里有效，
+// 换个标签页打开也应该是展开的。
+const SIDEBAR_COLLAPSED_KEY = 'code100_sidebar_collapsed';
+const sidebarToggle = document.getElementById('sidebar-toggle');
+
+// 浏览器能区分这次是刷新还是从别处导航过来的。
+// reload = 刷新；back_forward = 用前进/后退回到这个页面——
+// 这两种都算「还在原来那次浏览里」，应该保持状态。
+// navigate（从首页点进来、或者直接输网址）则回到默认展开。
+function shouldKeepSidebarState() {
+    try {
+        const nav = performance.getEntriesByType('navigation')[0];
+        if (!nav) return false;
+        return nav.type === 'reload' || nav.type === 'back_forward';
+    } catch (e) {
+        // 老浏览器拿不到这个 API，那就一律按「新进来」处理，展开是更安全的默认值
+        return false;
+    }
+}
+
+function applySidebarCollapsed(collapsed) {
+    document.body.classList.toggle('sidebar-collapsed', collapsed);
+    if (sidebarToggle) {
+        // aria-expanded 描述的是「侧边栏展开着吗」，所以跟 collapsed 相反
+        sidebarToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        sidebarToggle.title = collapsed ? 'Show sidebar' : 'Hide sidebar';
+    }
+}
+
+if (sidebarToggle) {
+    const savedCollapsed = sessionStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+    const initialCollapsed = shouldKeepSidebarState() ? savedCollapsed : false;
+
+    applySidebarCollapsed(initialCollapsed);
+    // 存回去，这样紧接着的刷新读到的是当前实际状态而不是上一次的残留
+    sessionStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(initialCollapsed));
+
+    sidebarToggle.addEventListener('click', () => {
+        const collapsed = !document.body.classList.contains('sidebar-collapsed');
+        applySidebarCollapsed(collapsed);
+        sessionStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+    });
+}
+
 
 // 进入考试专注模式：隐藏 sidebar、navbar 和 footer
 // （被 testing-engine.js 里 Testing 模式的「开始考试」逻辑调用）
@@ -154,11 +229,8 @@ navItems.forEach(item => {
         navItems.forEach(i => i.classList.remove('active'));
         this.classList.add('active');
 
-        // 根据点击的项的id，联动改变sidebar背景色
-        const color = colorMap[this.id];
-        if (color) {
-            sidebar.style.backgroundColor = color;
-        }
+        applySidebarTint(this.id);
+        scrollPageToTop();
 
         // 加载对应内容
         loadContent(this.id);
@@ -172,7 +244,7 @@ navItems.forEach(item => {
 
 // 页面加载时，先拉取所有试卷的分组数据，再显示默认的 Test 1
 fetchPapersGrouped().then(() => {
-    sidebar.style.backgroundColor = colorMap['test1'];
+    applySidebarTint('test1');
     loadContent('test1');
 });
 
@@ -183,6 +255,7 @@ items.forEach(item => {
 
         items.forEach(i => i.classList.remove('active'));
         this.classList.add('active');
+        scrollPageToTop();
 
         // 隐藏所有板块
         document.querySelectorAll('.test-section').forEach(section => {
