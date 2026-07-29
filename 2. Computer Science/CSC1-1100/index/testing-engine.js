@@ -53,6 +53,65 @@ function formatQuestionType(rawCategory) {
     return rawCategory.replace(/_/g, '-').toLowerCase();
 }
 
+// 题型筛选的唯一数据源。Practice 和 Marked Questions 两处筛选器都从这里生成。
+// 原来这份列表在 skeleton.html 里硬编码了两遍，加一个题型要改两处，
+// 漏掉一处是迟早的事——以后做课程参数化时，Math 的题型跟 CS1 完全不同，
+// 到时候只需要按课程换掉这个数组，不用去 HTML 里找。
+//
+// value 是发给后端的值（对应 Test_Questions.question_category 格式化之后的形式），
+// label 是显示给学生看的。空字符串表示"不筛选"。
+const QUESTION_TYPE_FILTERS = [
+    { value: '', label: 'All' },
+    { value: 'one-liners', label: 'One-Liners' },
+    { value: 'debugging', label: 'Debugging' },
+    { value: 'get-output', label: 'Get-Output' },
+    { value: 'half-program', label: 'Half-Program' },
+    { value: 'full-program', label: 'Full-Program' }
+];
+
+// 把一排题型标签渲染进容器。当前选中值存在容器自己的 dataset 上，
+// 读的时候统一走 getQuestionTypeFilterValue()，调用方不用各自记一份状态。
+// 重复调用是安全的：会整个重建，但保留已选中的值，也不会叠加监听器。
+function renderQuestionTypeFilter(container, onChange) {
+    if (!container) return;
+
+    const current = container.dataset.value || '';
+    container.dataset.value = current;
+    container.innerHTML = '';
+
+    QUESTION_TYPE_FILTERS.forEach(filter => {
+        const pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'qtype-pill';
+        pill.dataset.value = filter.value;
+        pill.textContent = filter.label;
+
+        const isActive = current === filter.value;
+        pill.classList.toggle('active', isActive);
+        // aria-pressed 让读屏软件知道这是个"开关"状态，而不是普通按钮
+        pill.setAttribute('aria-pressed', String(isActive));
+
+        pill.addEventListener('click', () => {
+            if (container.dataset.value === filter.value) return;   // 点已经选中的那个，不用重新拉数据
+
+            container.dataset.value = filter.value;
+            container.querySelectorAll('.qtype-pill').forEach(el => {
+                const nowActive = el.dataset.value === filter.value;
+                el.classList.toggle('active', nowActive);
+                el.setAttribute('aria-pressed', String(nowActive));
+            });
+
+            if (onChange) onChange(filter.value);
+        });
+
+        container.appendChild(pill);
+    });
+}
+
+function getQuestionTypeFilterValue(container) {
+    return container ? (container.dataset.value || '') : '';
+}
+
 // 记录当前登录用户标过重点的题目 id（进 Practice 页面时拉一次，用来决定每道题的星标要不要默认点亮）
 let starredQuestionIds = new Set();
 
@@ -233,6 +292,11 @@ function buildQuestionBlock(question, options = {}) {
 
     const questionPre = document.createElement('pre');
     questionPre.className = 'question-code';
+    // 只在「扫列表找题」的场景（Practice / Marked Questions）允许折叠。
+    // 真正折不折要等它进了 DOM 才知道——这里只是打个标记
+    if (options.collapseLongCode) {
+        questionPre.classList.add('question-code-collapsible');
+    }
     questionPre.textContent = question.question_description;
     wrapper.appendChild(questionPre);
 
@@ -287,6 +351,52 @@ function buildQuestionBlock(question, options = {}) {
     }
 
     return wrapper;
+}
+
+// 超过这个高度的题目会被折起来（px）。full-program 那类题动辄几十行，
+// 一道就能占满整屏，而 Practice 是跨年份混合展示的，一个 Test 下几十道题。
+const QUESTION_CODE_COLLAPSE_MAX = 360;
+
+// 把过长的题干折起来，底部留一个「Show more」。
+//
+// 没有用块内滚动条：嵌套滚动会跟页面滚动打架——鼠标划过代码块的时候，
+// 滚的就变成块内部了，得等它滚到底页面才继续动，扫列表的时候很难受。
+//
+// 必须在元素进入 DOM 之后才能调用：detached 元素的 scrollHeight 是 0，
+// 那样每道题都会被判定成「不够长」。
+function applyLongCodeCollapse(container) {
+    if (!container) return;
+
+    container.querySelectorAll('.question-code-collapsible').forEach(pre => {
+        if (pre.dataset.collapseChecked === 'true') return;   // 同一块只量一次
+        pre.dataset.collapseChecked = 'true';
+
+        // 不够长的题目完全不动它，也不挂那个按钮——
+        // 短题目下面吊一个点了没反应的「Show more」很傻
+        if (pre.scrollHeight <= QUESTION_CODE_COLLAPSE_MAX) return;
+
+        pre.classList.add('code-collapsed');
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'code-collapse-toggle';
+        toggle.textContent = 'Show more';
+        toggle.setAttribute('aria-expanded', 'false');
+
+        toggle.addEventListener('click', () => {
+            const collapsed = pre.classList.toggle('code-collapsed');
+            toggle.textContent = collapsed ? 'Show more' : 'Show less';
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+
+            // 收起的时候如果视线停在题目下半部分，页面会突然「往上缩」，
+            // 人就不知道自己滚到哪了。把题目开头拉回视野内
+            if (collapsed) {
+                pre.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        });
+
+        pre.insertAdjacentElement('afterend', toggle);
+    });
 }
 
 // Practice 页面用：5 星难度评分组件。点第几颗星就把评分设成几分（1~5），
@@ -396,7 +506,7 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
                 });
 
                 data.forEach((question, index) => {
-                    const wrapper = buildQuestionBlock(question, { showYear: true, showType, displayNumber: index + 1, showStar: true, showRating: true });
+                    const wrapper = buildQuestionBlock(question, { showYear: true, showType, displayNumber: index + 1, showStar: true, showRating: true, collapseLongCode: true });
 
                     if (question.question_solution) {
                         const toggleBtn = document.createElement('button');
@@ -420,6 +530,7 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
                     questionsWrap.appendChild(wrapper);
                 });
 
+                applyLongCodeCollapse(questionsWrap);
                 triggerFadeIn(questionsWrap);
                 scrollToPendingQuestionIfAny(questionsWrap);
             })
@@ -467,16 +578,16 @@ function ensureStarredQuestionIdsLoaded() {
     return starredIdsLoadPromise;
 }
 
-// 绑定 Practice 题型筛选下拉框的变化事件（每次切换 Test 分类、重新生成骨架后都要重新绑定，
+// 渲染 Practice 的题型筛选（每次切换 Test 分类、重新生成骨架后都要重新调用，
 // 因为骨架是整个替换的，旧的 DOM 和监听器已经不存在了）
 function setupPracticeFilter(category) {
-    const typeSelect = document.getElementById('practice-type-select');
-    if (!typeSelect) return;
+    const filterEl = document.getElementById('practice-type-filter');
+    if (!filterEl) return;
 
-    typeSelect.value = '';   // 每次切换 Test 分类，题型筛选重置为 "All"
+    filterEl.dataset.value = '';   // 每次切换 Test 分类，题型筛选重置为 "All"
 
-    typeSelect.addEventListener('change', () => {
-        loadPracticeQuestionsByCategory(category, typeSelect.value);
+    renderQuestionTypeFilter(filterEl, (value) => {
+        loadPracticeQuestionsByCategory(category, value);
     });
 }
 
@@ -487,7 +598,13 @@ let warned10 = false;
 let warned5 = false;
 let warned1 = false;
 let warnedTimesUp = false;
-const COUNTDOWN_TOTAL_SECONDS = 30;   // ⚠️ 测试用：30秒，正式上线记得改回 110 * 60（1小时50分钟）
+// 考试时长和三个提醒节点。四个值放在一起，是因为之前它们散在两个函数里，
+// 调试的时候改成了秒级的短值，上线前只记得改回一部分，很容易漏。
+// 以后要临时调短来测流程，改这四行就够，测完记得改回来。
+const COUNTDOWN_TOTAL_SECONDS = 110 * 60;   // 1 小时 50 分钟
+const WARN_AT_SECONDS_10MIN = 10 * 60;
+const WARN_AT_SECONDS_5MIN = 5 * 60;
+const WARN_AT_SECONDS_1MIN = 1 * 60;
 
 // 把秒数格式化成 mm:ss
 function formatMMSS(totalSeconds) {
@@ -687,19 +804,19 @@ function renderTimerDisplay(totalSeconds) {
 function checkCountdownWarning(remainingSeconds) {
     const timerDisplay = document.getElementById('testing-timer');
 
-    if (remainingSeconds <= 20 && !warned10) {   // ⚠️ 测试用：20秒节点，正式上线记得改回 10 * 60
+    if (remainingSeconds <= WARN_AT_SECONDS_10MIN && !warned10) {
         warned10 = true;
         if (timerDisplay) timerDisplay.classList.add('timer-warning-10');
         showExamToast('10 minutes remaining!');
     }
 
-    if (remainingSeconds <= 10 && !warned5) {   // ⚠️ 测试用：10秒节点，正式上线记得改回 5 * 60
+    if (remainingSeconds <= WARN_AT_SECONDS_5MIN && !warned5) {
         warned5 = true;
         if (timerDisplay) timerDisplay.classList.add('timer-warning-5');
         showExamToast('5 minutes remaining!');
     }
 
-    if (remainingSeconds <= 5 && !warned1) {   // ⚠️ 测试用：5秒节点，正式上线记得改回 1 * 60
+    if (remainingSeconds <= WARN_AT_SECONDS_1MIN && !warned1) {
         warned1 = true;
         if (timerDisplay) timerDisplay.classList.add('timer-warning-1');
         showExamToast('1 minute remaining!');
@@ -787,11 +904,9 @@ function loadRevisionQuestions() {
             revisionFullList = data || [];
             starredQuestionIds = new Set(revisionFullList.map(q => q.id)); // 保持跟 Practice 页面的星标状态同步
 
-            // 筛选下拉框每次骨架重新生成都是新节点，用 dataset 标记避免重复绑监听器
-            if (topicFilter && !topicFilter.dataset.listenerAttached) {
-                topicFilter.dataset.listenerAttached = 'true';
-                topicFilter.addEventListener('change', renderFilteredRevisionList);
-            }
+            // 重复调用是安全的：renderQuestionTypeFilter 会整个重建这排标签，
+            // 不会叠加监听器，已选中的值也会保留
+            renderQuestionTypeFilter(topicFilter, renderFilteredRevisionList);
 
             renderFilteredRevisionList();
         })
@@ -816,7 +931,7 @@ function renderFilteredRevisionList() {
         return;
     }
 
-    const topicValue = topicFilter ? topicFilter.value : '';
+    const topicValue = getQuestionTypeFilterValue(topicFilter);
 
     const filtered = revisionFullList.filter(q => {
         if (topicValue && formatQuestionType(q.question_category) !== topicValue) return false;
@@ -846,6 +961,7 @@ function renderFilteredRevisionList() {
             displayNumber: index + 1,
             showStar: true,
             showGoToQuestion: true,
+            collapseLongCode: true,
             // 备注输入框先去掉，之后想好新的记笔记方案再说；底层的 note 存储/接口先保留不动
             // 在 Revision 页面取消星标，直接把这道题从当前列表和缓存里移除，不用整页重新拉一次
             onUnstar: (questionEl) => {
@@ -879,6 +995,7 @@ function renderFilteredRevisionList() {
         container.appendChild(wrapper);
     });
 
+    applyLongCodeCollapse(container);
     triggerFadeIn(container);
 }
 
@@ -950,626 +1067,5 @@ function initCribSheet() {
                 saveBtn.disabled = false;
                 saveBtn.textContent = originalText;
             });
-    });
-}
-
-// ---------- Cribsheet Builder v2：网格拖拽画布（GridStack.js）----------
-// 笔记库/尺寸列表不用登录也能看；加笔记/拖动/删除/导出这些操作需要登录
-const CRIBSHEET_GRID_COLS = 12;
-const CRIBSHEET_UNDO_KEY = 'code100_cribsheet_undo_stack';
-const CRIBSHEET_REDO_KEY = 'code100_cribsheet_redo_stack';
-const CRIBSHEET_MAX_HISTORY = 30;
-
-let cribsheetLibraryCache = null; // 笔记库内容不常变，缓存一份，切换标签页不用重复请求
-let cribsheetNoteSizesCache = null;
-let gridStackInstance = null;
-let pendingCribsheetAdd = null; // 记录当前"选尺寸"弹窗是给哪条内容用的：{noteId} 或 {customTitle, customContent}
-
-function initCribsheetBuilder() {
-    loadCribsheetNoteSizes().then(() => {
-        initCribsheetGridStack();
-        loadMyCribsheetLayout();
-    });
-    loadCribsheetLibrary();
-    initCribsheetLibrarySearch();
-    initCribsheetCustomNoteFlow();
-    initCribsheetSizeModal();
-    initCribsheetToolbarActions();
-    initCribsheetOrientationToggle();
-    initCribsheetPdfExport();
-}
-
-// ---------- 笔记库（左边面板） ----------
-function loadCribsheetLibrary() {
-    const container = document.getElementById('cribsheet-library-container');
-    if (!container) return;
-
-    if (cribsheetLibraryCache) {
-        renderCribsheetLibrary(cribsheetLibraryCache);
-        return;
-    }
-
-    container.innerHTML = '<div class="questions-loading">Loading note library...</div>';
-
-    fetch(`${APP_API_BASE}/api/cribsheet/notes`)
-        .then(res => res.json())
-        .then(data => {
-            cribsheetLibraryCache = data;
-            renderCribsheetLibrary(data);
-        })
-        .catch(error => {
-            console.error('Failed to load note library:', error);
-            container.innerHTML = '<div class="questions-error">Failed to load the note library. Please try refreshing the page.</div>';
-        });
-}
-
-function renderCribsheetLibrary(grouped, searchText = '') {
-    const container = document.getElementById('cribsheet-library-container');
-    if (!container) return;
-
-    container.innerHTML = '';
-    const search = searchText.trim().toLowerCase();
-    let anyVisible = false;
-
-    Object.keys(grouped).forEach(category => {
-        const notesInCategory = grouped[category].filter(note =>
-            !search || note.title.toLowerCase().includes(search) || note.content.toLowerCase().includes(search)
-        );
-        if (notesInCategory.length === 0) return;
-        anyVisible = true;
-
-        const section = document.createElement('div');
-        section.className = 'cribsheet-library-category';
-
-        const heading = document.createElement('h4');
-        heading.textContent = category;
-        section.appendChild(heading);
-
-        notesInCategory.forEach(note => {
-            const item = document.createElement('button');
-            item.type = 'button';
-            item.className = 'cribsheet-library-item';
-            item.innerHTML = `<span class="cribsheet-library-item-title">${note.title}</span><i class="fa-solid fa-plus"></i>`;
-            item.title = 'Add to my Cribsheet';
-
-            item.addEventListener('click', () => {
-                if (!getToken()) return;
-                openCribsheetSizeModal({ noteId: note.id, title: note.title });
-            });
-
-            section.appendChild(item);
-        });
-
-        container.appendChild(section);
-    });
-
-    if (!anyVisible) {
-        container.innerHTML = '<p class="cribsheet-empty-hint">No notes match your search.</p>';
-    }
-}
-
-function initCribsheetLibrarySearch() {
-    const searchInput = document.getElementById('cribsheet-library-search');
-    if (!searchInput) return;
-    if (searchInput.dataset.listenerAttached) return;
-    searchInput.dataset.listenerAttached = 'true';
-
-    searchInput.addEventListener('input', () => {
-        if (cribsheetLibraryCache) renderCribsheetLibrary(cribsheetLibraryCache, searchInput.value);
-    });
-}
-
-// ---------- 自定义笔记（学生自己写） ----------
-function initCribsheetCustomNoteFlow() {
-    const addBtn = document.getElementById('cribsheet-add-custom-btn');
-    const backdrop = document.getElementById('cribsheet-custom-modal-backdrop');
-    const titleInput = document.getElementById('cribsheet-custom-title-input');
-    const contentInput = document.getElementById('cribsheet-custom-content-input');
-    const cancelBtn = document.getElementById('cribsheet-custom-modal-cancel');
-    const nextBtn = document.getElementById('cribsheet-custom-modal-next');
-    if (!addBtn || addBtn.dataset.listenerAttached) return;
-    addBtn.dataset.listenerAttached = 'true';
-
-    addBtn.addEventListener('click', () => {
-        if (!getToken()) return;
-        titleInput.value = '';
-        contentInput.value = '';
-        backdrop.style.display = 'flex';
-    });
-
-    cancelBtn.addEventListener('click', () => { backdrop.style.display = 'none'; });
-
-    nextBtn.addEventListener('click', () => {
-        const title = titleInput.value.trim();
-        const content = contentInput.value.trim();
-        if (!title) {
-            showToast('Please give your note a title.', true);
-            return;
-        }
-        backdrop.style.display = 'none';
-        openCribsheetSizeModal({ customTitle: title, customContent: content, title });
-    });
-}
-
-// ---------- 选尺寸弹窗（引用笔记库 / 自定义笔记 都走这一个） ----------
-function loadCribsheetNoteSizes() {
-    if (cribsheetNoteSizesCache) return Promise.resolve(cribsheetNoteSizesCache);
-    return fetch(`${APP_API_BASE}/api/cribsheet/note-sizes`)
-        .then(res => res.json())
-        .then(data => { cribsheetNoteSizesCache = data; return data; })
-        .catch(error => {
-            console.error('Failed to load note sizes:', error);
-            cribsheetNoteSizesCache = [];
-            return [];
-        });
-}
-
-function initCribsheetSizeModal() {
-    const cancelBtn = document.getElementById('cribsheet-size-modal-cancel');
-    if (!cancelBtn || cancelBtn.dataset.listenerAttached) return;
-    cancelBtn.dataset.listenerAttached = 'true';
-
-    cancelBtn.addEventListener('click', () => {
-        document.getElementById('cribsheet-size-modal-backdrop').style.display = 'none';
-        pendingCribsheetAdd = null;
-    });
-}
-
-function openCribsheetSizeModal(addContext) {
-    pendingCribsheetAdd = addContext;
-
-    const backdrop = document.getElementById('cribsheet-size-modal-backdrop');
-    const titleEl = document.getElementById('cribsheet-size-modal-title');
-    const optionsEl = document.getElementById('cribsheet-size-options');
-
-    titleEl.textContent = `Choose a size for "${addContext.title}"`;
-    optionsEl.innerHTML = '';
-
-    (cribsheetNoteSizesCache || []).forEach(size => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'cribsheet-size-option';
-        btn.innerHTML = `<span class="cribsheet-size-option-name">${size.name}</span><span class="cribsheet-size-option-dims">${size.cols} \u00d7 ${size.rows}</span>`;
-        btn.addEventListener('click', () => {
-            backdrop.style.display = 'none';
-            addNoteToGrid(pendingCribsheetAdd, size);
-            pendingCribsheetAdd = null;
-        });
-        optionsEl.appendChild(btn);
-    });
-
-    if ((cribsheetNoteSizesCache || []).length === 0) {
-        optionsEl.innerHTML = '<p class="cribsheet-empty-hint">No sizes have been set up yet. Ask an admin to add some in the Admin panel.</p>';
-    }
-
-    backdrop.style.display = 'flex';
-}
-
-// ---------- 画布本身（GridStack） ----------
-function initCribsheetGridStack() {
-    const gridEl = document.getElementById('cribsheet-grid');
-    if (!gridEl || typeof GridStack === 'undefined') return;
-
-    // Test 分类切换会让骨架整个重新生成，旧的 GridStack 实例已经跟着旧 DOM 一起没了，
-    // 这里直接重新 init 一个新的就行，不用特地去 destroy 旧的
-    gridStackInstance = GridStack.init({
-        column: CRIBSHEET_GRID_COLS,
-        cellHeight: 28,
-        margin: 4,
-        float: true,        // 自由摆放，不会自动往上挤压对齐
-        disableResize: true // 尺寸只能通过预设的几档切换，不支持任意拖拽缩放
-    }, gridEl);
-
-    gridStackInstance.on('change', (event, changedItems) => {
-        if (!changedItems) return;
-        changedItems.forEach(node => {
-            const el = node.el;
-            const layoutId = el ? el.dataset.layoutId : null;
-            if (!layoutId) return;
-            syncCribsheetItemPosition(Number(layoutId), node.x, node.y);
-        });
-    });
-
-    gridEl.addEventListener('click', (e) => {
-        document.querySelectorAll('#cribsheet-grid .grid-stack-item').forEach(el => el.classList.remove('cribsheet-item-selected'));
-        const card = e.target.closest('.grid-stack-item');
-        if (card) card.classList.add('cribsheet-item-selected');
-    });
-}
-
-// 拿这个用户画布上的完整布局，渲染出来
-function loadMyCribsheetLayout() {
-    const token = getToken();
-    const emptyHint = document.getElementById('cribsheet-empty-hint');
-
-    if (!token) {
-        if (emptyHint) {
-            emptyHint.style.display = 'block';
-            emptyHint.textContent = 'Log in to build and save your Cribsheet.';
-        }
-        return;
-    }
-
-    fetch(`${APP_API_BASE}/api/cribsheet/my-layout`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    })
-        .then(res => res.json())
-        .then(items => renderCribsheetGridFromData(items || []))
-        .catch(error => console.error('Failed to load Cribsheet layout:', error));
-}
-
-// 把一份布局数据（数组）整个渲染到画布上——新加载页面、以及 Undo/Redo 恢复某个历史快照时都用这个
-function renderCribsheetGridFromData(items) {
-    if (!gridStackInstance) return;
-    gridStackInstance.removeAll();
-
-    const emptyHint = document.getElementById('cribsheet-empty-hint');
-    if (emptyHint) emptyHint.style.display = items.length === 0 ? 'block' : 'none';
-
-    items.forEach(item => {
-        addGridStackWidgetFromItem(item);
-    });
-}
-
-function addGridStackWidgetFromItem(item) {
-    if (!gridStackInstance) return;
-
-    const contentHTML = `
-        <div class="grid-stack-item-content cribsheet-note-card">
-            <button type="button" class="cribsheet-note-remove" title="Remove"><i class="fa-solid fa-xmark"></i></button>
-            <p class="cribsheet-note-title">${item.title}</p>
-            <p class="cribsheet-note-content">${item.content}</p>
-        </div>
-    `;
-
-    const el = gridStackInstance.addWidget({
-        w: item.cols,
-        h: item.rows,
-        x: item.gridCol,
-        y: item.gridRow,
-        content: contentHTML
-    });
-
-    el.dataset.layoutId = item.id;
-
-    const removeBtn = el.querySelector('.cribsheet-note-remove');
-    if (removeBtn) {
-        removeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteCribsheetItem(Number(item.id), el);
-        });
-    }
-
-    const emptyHint = document.getElementById('cribsheet-empty-hint');
-    if (emptyHint) emptyHint.style.display = 'none';
-}
-
-// ---------- 跟后端同步的几个操作：加/删/挪位置，每次操作之前都先把"操作之前"的完整布局存进撤销栈 ----------
-function addNoteToGrid(addContext, size) {
-    pushCribsheetUndoSnapshot();
-
-    const token = getToken();
-    if (!token) return;
-
-    // 先找画布上一个空位（很朴素的从左到右、从上到下找空位逻辑）
-    const pos = findFreeGridPosition(size.cols, size.rows);
-
-    const body = {
-        sizeId: size.id,
-        gridCol: pos.x,
-        gridRow: pos.y
-    };
-    if (addContext.noteId) {
-        body.noteId = addContext.noteId;
-    } else {
-        body.customTitle = addContext.customTitle;
-        body.customContent = addContext.customContent;
-    }
-
-    fetch(`${APP_API_BASE}/api/cribsheet/layout-items`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    })
-        .then(res => res.json())
-        .then(created => {
-            addGridStackWidgetFromItem({
-                id: created.id,
-                title: addContext.customTitle ? addContext.customTitle : addContext.title,
-                content: addContext.customContent !== undefined ? addContext.customContent : (cribsheetLibraryLookupContent(addContext.noteId) || ''),
-                cols: size.cols,
-                rows: size.rows,
-                gridCol: pos.x,
-                gridRow: pos.y
-            });
-        })
-        .catch(error => {
-            console.error('Failed to add note to Cribsheet:', error);
-            showToast('Failed to add note. Please try again.', true);
-        });
-}
-
-// 从缓存的笔记库数据里找一条笔记的正文内容（加完笔记后本地直接渲染用，不用再额外请求一次）
-function cribsheetLibraryLookupContent(noteId) {
-    if (!cribsheetLibraryCache) return '';
-    for (const category of Object.keys(cribsheetLibraryCache)) {
-        const found = cribsheetLibraryCache[category].find(n => n.id === noteId);
-        if (found) return found.content;
-    }
-    return '';
-}
-
-// 很朴素地找一个能放得下这个尺寸的空位：从左上角开始按行扫描，格子本身有没有被占用
-// 用一个简单的二维占用表来判断（画布上笔记数量不会很多，这样做完全够用）
-function findFreeGridPosition(w, h) {
-    const occupied = [];
-    if (gridStackInstance) {
-        gridStackInstance.getGridItems().forEach(el => {
-            const node = el.gridstackNode;
-            if (!node) return;
-            occupied.push({ x: node.x, y: node.y, w: node.w, h: node.h });
-        });
-    }
-
-    function overlaps(x, y) {
-        return occupied.some(o => x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y);
-    }
-
-    for (let y = 0; y < 200; y++) {
-        for (let x = 0; x <= CRIBSHEET_GRID_COLS - w; x++) {
-            if (!overlaps(x, y)) return { x, y };
-        }
-    }
-    return { x: 0, y: 0 };
-}
-
-function syncCribsheetItemPosition(layoutId, gridCol, gridRow) {
-    const token = getToken();
-    if (!token) return;
-    pushCribsheetUndoSnapshot();
-
-    fetch(`${APP_API_BASE}/api/cribsheet/layout-items/${layoutId}`, {
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gridCol, gridRow })
-    }).catch(error => console.error('Failed to save new position:', error));
-}
-
-function deleteCribsheetItem(layoutId, el) {
-    const token = getToken();
-    if (!token) return;
-    pushCribsheetUndoSnapshot();
-
-    fetch(`${APP_API_BASE}/api/cribsheet/layout-items/${layoutId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-    })
-        .then(() => {
-            if (gridStackInstance && el) gridStackInstance.removeWidget(el);
-            const remaining = document.querySelectorAll('#cribsheet-grid .grid-stack-item').length;
-            const emptyHint = document.getElementById('cribsheet-empty-hint');
-            if (emptyHint) emptyHint.style.display = remaining === 0 ? 'block' : 'none';
-        })
-        .catch(error => {
-            console.error('Failed to delete note:', error);
-            showToast('Failed to delete note.', true);
-        });
-}
-
-// ---------- 工具栏：Undo / Redo / 删除选中 / 清空整页 ----------
-function initCribsheetToolbarActions() {
-    const undoBtn = document.getElementById('cribsheet-undo-btn');
-    const redoBtn = document.getElementById('cribsheet-redo-btn');
-    const deleteSelectedBtn = document.getElementById('cribsheet-delete-selected-btn');
-    const clearBtn = document.getElementById('cribsheet-clear-page-btn');
-
-    if (undoBtn && !undoBtn.dataset.listenerAttached) {
-        undoBtn.dataset.listenerAttached = 'true';
-        undoBtn.addEventListener('click', undoCribsheet);
-    }
-    if (redoBtn && !redoBtn.dataset.listenerAttached) {
-        redoBtn.dataset.listenerAttached = 'true';
-        redoBtn.addEventListener('click', redoCribsheet);
-    }
-    if (deleteSelectedBtn && !deleteSelectedBtn.dataset.listenerAttached) {
-        deleteSelectedBtn.dataset.listenerAttached = 'true';
-        deleteSelectedBtn.addEventListener('click', () => {
-            const selected = document.querySelector('#cribsheet-grid .grid-stack-item.cribsheet-item-selected');
-            if (!selected) {
-                showToast('Click a note on the page first to select it.', true);
-                return;
-            }
-            deleteCribsheetItem(Number(selected.dataset.layoutId), selected);
-        });
-    }
-    if (clearBtn && !clearBtn.dataset.listenerAttached) {
-        clearBtn.dataset.listenerAttached = 'true';
-        clearBtn.addEventListener('click', () => {
-            const confirmed = confirm('Clear the entire page? This removes every note from your Cribsheet.');
-            if (!confirmed) return;
-
-            pushCribsheetUndoSnapshot();
-            const token = getToken();
-            if (!token) return;
-
-            fetch(`${APP_API_BASE}/api/cribsheet/layout`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            })
-                .then(() => renderCribsheetGridFromData([]))
-                .catch(error => console.error('Failed to clear page:', error));
-        });
-    }
-}
-
-// ---------- Undo / Redo：整份布局的快照，存在 localStorage 里，刷新页面之后也能接着撤销 ----------
-// 撤销的做法比较"简单粗暴但可靠"：撤销的时候不是精确回退单个操作，而是把当前整页数据
-// 拿这个快照整个覆盖重建（先清空服务器上的画布，再按快照内容一条条重新创建）——
-// 这样实现起来不容易出细节 bug，代价是撤销/重做的时候会有一两次额外的网络请求，
-// 对于这种不是高频操作的场景，这个取舍是划算的。
-function getCribsheetUndoStack() {
-    try {
-        return JSON.parse(localStorage.getItem(CRIBSHEET_UNDO_KEY)) || [];
-    } catch (e) { return []; }
-}
-function getCribsheetRedoStack() {
-    try {
-        return JSON.parse(localStorage.getItem(CRIBSHEET_REDO_KEY)) || [];
-    } catch (e) { return []; }
-}
-function saveCribsheetUndoStack(stack) {
-    localStorage.setItem(CRIBSHEET_UNDO_KEY, JSON.stringify(stack.slice(-CRIBSHEET_MAX_HISTORY)));
-}
-function saveCribsheetRedoStack(stack) {
-    localStorage.setItem(CRIBSHEET_REDO_KEY, JSON.stringify(stack.slice(-CRIBSHEET_MAX_HISTORY)));
-}
-
-function snapshotCurrentCribsheetLayout() {
-    if (!gridStackInstance) return [];
-    return gridStackInstance.getGridItems().map(el => {
-        const node = el.gridstackNode;
-        const titleEl = el.querySelector('.cribsheet-note-title');
-        const contentEl = el.querySelector('.cribsheet-note-content');
-        const matchedSize = (cribsheetNoteSizesCache || []).find(s => s.cols === node.w && s.rows === node.h);
-        return {
-            layoutId: Number(el.dataset.layoutId),
-            title: titleEl ? titleEl.textContent : '',
-            content: contentEl ? contentEl.textContent : '',
-            cols: node.w,
-            rows: node.h,
-            // 存实际匹配到的 sizeId；万一尺寸被 Admin 删掉了导致匹配不到，退回第一个可用尺寸，
-            // 保证撤销这个动作本身不会直接报错崩掉
-            sizeId: matchedSize ? matchedSize.id : ((cribsheetNoteSizesCache && cribsheetNoteSizesCache[0]) ? cribsheetNoteSizesCache[0].id : 1),
-            gridCol: node.x,
-            gridRow: node.y
-        };
-    });
-}
-
-// 每次真正修改画布之前调用一次，把"修改之前"的样子存进撤销栈
-function pushCribsheetUndoSnapshot() {
-    const stack = getCribsheetUndoStack();
-    stack.push(snapshotCurrentCribsheetLayout());
-    saveCribsheetUndoStack(stack);
-    saveCribsheetRedoStack([]); // 一旦有新操作，之前撤销掉又想重做的路径就作废了
-}
-
-function undoCribsheet() {
-    const undoStack = getCribsheetUndoStack();
-    if (undoStack.length === 0) {
-        showToast('Nothing to undo.', true);
-        return;
-    }
-
-    const redoStack = getCribsheetRedoStack();
-    redoStack.push(snapshotCurrentCribsheetLayout());
-    saveCribsheetRedoStack(redoStack);
-
-    const previousSnapshot = undoStack.pop();
-    saveCribsheetUndoStack(undoStack);
-    restoreCribsheetSnapshot(previousSnapshot);
-}
-
-function redoCribsheet() {
-    const redoStack = getCribsheetRedoStack();
-    if (redoStack.length === 0) {
-        showToast('Nothing to redo.', true);
-        return;
-    }
-
-    const undoStack = getCribsheetUndoStack();
-    undoStack.push(snapshotCurrentCribsheetLayout());
-    saveCribsheetUndoStack(undoStack);
-
-    const nextSnapshot = redoStack.pop();
-    saveCribsheetRedoStack(redoStack);
-    restoreCribsheetSnapshot(nextSnapshot);
-}
-
-// 把服务器上的画布重建成快照里记录的样子：全部清空，再按快照内容一条条重新创建
-function restoreCribsheetSnapshot(snapshot) {
-    const token = getToken();
-    if (!token) return;
-
-    fetch(`${APP_API_BASE}/api/cribsheet/layout`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-    })
-        .then(() => {
-            const createPromises = snapshot.map(item =>
-                fetch(`${APP_API_BASE}/api/cribsheet/layout-items`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        customTitle: item.title,
-                        customContent: item.content,
-                        sizeId: item.sizeId,
-                        gridCol: item.gridCol,
-                        gridRow: item.gridRow
-                    })
-                })
-                    .then(res => res.json())
-                    .then(created => ({ ...item, id: created.id }))
-            );
-            return Promise.all(createPromises);
-        })
-        .then(restoredItems => {
-            renderCribsheetGridFromData(restoredItems.map(item => ({
-                id: item.id,
-                title: item.title,
-                content: item.content,
-                cols: item.cols,
-                rows: item.rows,
-                gridCol: item.gridCol,
-                gridRow: item.gridRow
-            })));
-        })
-        .catch(error => console.error('Failed to restore snapshot:', error));
-}
-
-
-// ---------- 页面朝向切换（Portrait / Landscape）：只影响预览大小和打印时的纸张方向 ----------
-function initCribsheetOrientationToggle() {
-    const toggle = document.getElementById('cribsheet-orientation-toggle');
-    const page = document.getElementById('cribsheet-page');
-    if (!toggle || !page) return;
-    if (toggle.dataset.listenerAttached) return; // 避免切 Test 分类导致骨架重建时重复绑定
-    toggle.dataset.listenerAttached = 'true';
-
-    toggle.querySelectorAll('button').forEach(btn => {
-        btn.addEventListener('click', () => {
-            toggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            const orientation = btn.dataset.orientation;
-            page.classList.toggle('landscape', orientation === 'landscape');
-            updatePrintOrientationStyle(orientation);
-        });
-    });
-}
-
-// 打印用的纸张方向（Letter portrait / landscape）没法直接用 class 选择器控制 @page，
-// 所以在打印之前动态写一个 <style> 标签，切换方向的时候同步更新它的内容
-function updatePrintOrientationStyle(orientation) {
-    let styleEl = document.getElementById('cribsheet-print-orientation-style');
-    if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = 'cribsheet-print-orientation-style';
-        document.head.appendChild(styleEl);
-    }
-    styleEl.textContent = `@page { size: letter ${orientation}; margin: 0.6in; }`;
-}
-
-// ---------- Save as PDF：直接调用浏览器的打印功能，选"另存为 PDF"就是导出 ----------
-function initCribsheetPdfExport() {
-    const btn = document.getElementById('cribsheet-pdf-btn');
-    if (!btn) return;
-    if (btn.dataset.listenerAttached) return;
-    btn.dataset.listenerAttached = 'true';
-
-    // 默认按 portrait 初始化一次打印方向样式，不然第一次点 Save as PDF 时可能还没设置过
-    updatePrintOrientationStyle('portrait');
-
-    btn.addEventListener('click', () => {
-        window.print();
     });
 }

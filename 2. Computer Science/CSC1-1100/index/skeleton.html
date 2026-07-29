@@ -9,17 +9,14 @@
 <div class="test-section active" id="practice-content">
     <h2>Practice</h2>
 
-    <!-- 题型筛选：Practice 模式跨所有年份混合展示，靠这个下拉框按题型筛选 -->
+    <!-- 题型筛选：Practice 模式跨所有年份混合展示，靠这排标签按题型筛选。
+         选项不写在这里——由 testing-engine.js 的 QUESTION_TYPE_FILTERS 生成，
+         那是全站唯一的一份题型列表。原来这里和下面 Marked Questions 各硬编码了
+         一份一模一样的 <option>，加题型必须改两处，早晚会漏掉一个。 -->
     <div class="practice-filter">
-        <label for="practice-type-select">Question Type: </label>
-        <select id="practice-type-select">
-            <option value="">All</option>
-            <option value="one-liners">One-Liners</option>
-            <option value="debugging">Debugging</option>
-            <option value="get-output">Get-Output</option>
-            <option value="half-program">Half-Program</option>
-            <option value="full-program">Full-Program</option>
-        </select>
+        <span class="question-filter-label">Question type</span>
+        <div class="question-type-filter" id="practice-type-filter"
+             role="group" aria-label="Filter by question type"></div>
     </div>
 
     <div id="practice-questions">
@@ -94,17 +91,11 @@
         </button>
         <h2>Marked Questions</h2>
 
+        <!-- 跟 Practice 那排用的是同一份数据和同一个渲染函数 -->
         <div class="revision-filter-row">
-            <label for="revision-topic-filter">Question Type:
-                <select id="revision-topic-filter">
-                    <option value="">All</option>
-                    <option value="one-liners">One-Liners</option>
-                    <option value="debugging">Debugging</option>
-                    <option value="get-output">Get-Output</option>
-                    <option value="half-program">Half-Program</option>
-                    <option value="full-program">Full-Program</option>
-                </select>
-            </label>
+            <span class="question-filter-label">Question type</span>
+            <div class="question-type-filter" id="revision-topic-filter"
+                 role="group" aria-label="Filter by question type"></div>
         </div>
 
         <div id="marked-questions-container">
@@ -144,6 +135,7 @@
                     <div class="cribsheet-toolbar-actions">
                         <button type="button" id="cribsheet-undo-btn" class="cribsheet-icon-btn" title="Undo"><i class="fa-solid fa-rotate-left"></i></button>
                         <button type="button" id="cribsheet-redo-btn" class="cribsheet-icon-btn" title="Redo"><i class="fa-solid fa-rotate-right"></i></button>
+                        <button type="button" id="cribsheet-duplicate-selected-btn" class="cribsheet-icon-btn" title="Duplicate selected"><i class="fa-solid fa-clone"></i></button>
                         <button type="button" id="cribsheet-delete-selected-btn" class="cribsheet-icon-btn" title="Delete selected"><i class="fa-solid fa-trash"></i></button>
                         <button type="button" id="cribsheet-clear-page-btn" class="cribsheet-text-btn">Clear Page</button>
                         <button type="button" id="cribsheet-pdf-btn" class="cribsheet-pdf-btn">
@@ -155,7 +147,54 @@
                 <div class="cribsheet-page-wrap">
                     <div class="cribsheet-page" id="cribsheet-page">
                         <div class="grid-stack" id="cribsheet-grid"></div>
-                        <p class="cribsheet-empty-hint" id="cribsheet-empty-hint">No notes added yet — click a note on the left, or drag it onto the page.</p>
+                        <!-- 对齐参考线画在这一层，浮在卡片上面。inset 跟网格底一样是 20px，
+                             两者用同一套坐标，画出来才对得上 -->
+                        <div class="cribsheet-guide-layer" id="cribsheet-guide-layer"></div>
+
+                        <!-- 浮动样式工具条：选中方块时浮在它正上方，跟着它走。
+                             放在 .cribsheet-page 内部用 absolute 定位——纸本身是 position: relative，
+                             所以坐标只需要算「相对纸左上角」，不碰视口、不用管祖先有没有 transform。
+                             它是覆盖层，不占文档流，画布布局不会因为它出现而移动 -->
+                        <div class="cribsheet-style-bar" id="cribsheet-style-panel">
+                            <label class="cribsheet-style-size-wrap" title="Text size">
+                                <i class="fa-solid fa-a"></i>
+                                <select id="cribsheet-style-size" aria-label="Text size">
+                                    <option value="">Auto</option>
+                                    <option value="9">9</option>
+                                    <option value="10">10</option>
+                                    <option value="11">11</option>
+                                    <option value="12">12</option>
+                                    <option value="14">14</option>
+                                    <option value="16">16</option>
+                                    <option value="18">18</option>
+                                </select>
+                            </label>
+
+                            <span class="cribsheet-style-divider"></span>
+
+                            <button type="button" id="cribsheet-style-bold" class="cribsheet-style-toggle" title="Bold" aria-label="Bold"><i class="fa-solid fa-bold"></i></button>
+                            <button type="button" id="cribsheet-style-italic" class="cribsheet-style-toggle" title="Italic" aria-label="Italic"><i class="fa-solid fa-italic"></i></button>
+
+                            <span class="cribsheet-style-divider"></span>
+
+                            <label class="cribsheet-style-swatch" title="Text color">
+                                <input type="color" id="cribsheet-style-text-color" value="#333333" aria-label="Text color">
+                                <i class="fa-solid fa-font"></i>
+                            </label>
+                            <label class="cribsheet-style-swatch" title="Fill color">
+                                <input type="color" id="cribsheet-style-bg-color" value="#f5f9fd" aria-label="Fill color">
+                                <i class="fa-solid fa-fill-drip"></i>
+                            </label>
+
+                            <span class="cribsheet-style-divider"></span>
+
+                            <button type="button" id="cribsheet-style-reset" class="cribsheet-style-toggle" title="Reset styles" aria-label="Reset styles"><i class="fa-solid fa-eraser"></i></button>
+                        </div>
+                        <div class="cribsheet-canvas-empty" id="cribsheet-empty-hint">
+                            <div class="cribsheet-canvas-empty-icon"><i class="fa-solid fa-note-sticky"></i></div>
+                            <p class="cribsheet-canvas-empty-title" id="cribsheet-empty-title">Your page is empty</p>
+                            <p class="cribsheet-canvas-empty-subtext" id="cribsheet-empty-subtext">Pick a note from the library on the left to place it here. Drag to move it, or drag the bottom-right corner to resize.</p>
+                        </div>
                     </div>
                 </div>
 
@@ -198,6 +237,27 @@
             <div class="cribsheet-modal-actions">
                 <button type="button" id="cribsheet-custom-modal-cancel" class="cribsheet-modal-cancel-btn">Cancel</button>
                 <button type="button" id="cribsheet-custom-modal-next" class="cribsheet-modal-next-btn">Next: Choose Size</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 双击画布上的方块时弹出的编辑弹窗。
+         引用笔记库的方块保存之后会转成学生自己的副本（后端把 note_id 置空），
+         因为公共笔记库是全站共享的，不能被单个学生改动——上面那条提示就是说明这件事的，
+         只有编辑引用笔记库的方块时才显示。 -->
+    <div class="cribsheet-modal-backdrop" id="cribsheet-edit-modal-backdrop" style="display: none;">
+        <div class="cribsheet-modal">
+            <h3>Edit Note</h3>
+            <p class="cribsheet-edit-warning" id="cribsheet-edit-warning" style="display: none;">
+                This note comes from the shared library. Saving will turn it into your own copy — the library note itself stays unchanged.
+            </p>
+            <label for="cribsheet-edit-title-input">Title</label>
+            <input type="text" id="cribsheet-edit-title-input" placeholder="Note title">
+            <label for="cribsheet-edit-content-input">Content</label>
+            <textarea id="cribsheet-edit-content-input" rows="6" placeholder="Write whatever you want here"></textarea>
+            <div class="cribsheet-modal-actions">
+                <button type="button" id="cribsheet-edit-modal-cancel" class="cribsheet-modal-cancel-btn">Cancel</button>
+                <button type="button" id="cribsheet-edit-modal-save" class="cribsheet-modal-next-btn">Save Changes</button>
             </div>
         </div>
     </div>

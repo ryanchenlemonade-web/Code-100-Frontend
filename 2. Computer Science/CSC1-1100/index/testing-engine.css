@@ -41,17 +41,123 @@
 
 
 /* Practice 模式的题型筛选下拉框，样式跟 version-selector 保持一致 */
+/* ---------- 过长题目的折叠 ---------- */
+/* 折叠高度跟 JS 里的 QUESTION_CODE_COLLAPSE_MAX 是两处，改一个要改两个。
+   放在 CSS 里是因为 max-height 需要能被 class 切换，
+   放在 JS 里写内联样式则展开/收起要来回改属性，更绕 */
+.question-code-collapsible.code-collapsed {
+    position: relative;
+    max-height: 360px;
+    overflow: hidden;
+}
+
+/* 底部渐隐，暗示下面还有内容。渐变的终点色要跟代码块底色一致，
+   不然会看到一条边 */
+.question-code-collapsible.code-collapsed::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 60px;
+    background: linear-gradient(to bottom, transparent, var(--code-bg));
+    pointer-events: none;
+}
+
+.code-collapse-toggle {
+    display: inline-flex;
+    align-items: center;
+    /* 代码块自带 16px 下外边距，这里往回收一点，让按钮贴着它 */
+    margin: -10px 0 16px;
+    padding: 5px 13px;
+    border: 1px solid var(--divider-color, #ddd);
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--weak-color, #666);
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 500;
+    font-family: inherit;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.code-collapse-toggle:hover {
+    border-color: hsl(214, 55%, 74%);
+    background: hsl(214, 60%, 98%);
+    color: hsl(214, 84%, 42%);
+}
+
+/* Practice 整体往右挪一点。加在这一段上而不是 .content 上——
+   .content 是 Practice / Examination / Revision 三个模式共用的容器，
+   改它的话另外两个会跟着一起动 */
+#practice-content {
+    padding-left: 14px;
+}
+
+/* ---------- 题型筛选（Practice 和 Marked Questions 共用） ---------- */
+/* 从下拉框换成一排标签。下拉框要点两下才能切换，而且不点开根本不知道
+   有哪些题型可选——「Half-Program」这种类型学生压根不会知道它存在。
+   6 个选项全是短词，平铺完全放得下 */
 .practice-filter {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    flex-wrap: wrap;
     margin-bottom: 20px;
-    font-size: 0.95rem;
-    color: var(--icon-color);
 }
 
-.practice-filter label {
+.question-filter-label {
+    font-size: 0.78rem;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--weak-color, #888);
+    white-space: nowrap;
+}
+
+.question-type-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.qtype-pill {
+    padding: 6px 13px;
+    border: 1px solid var(--divider-color, #ddd);
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--weak-color, #666);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 500;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, border-color 0.15s ease,
+                color 0.15s ease, transform 0.12s ease;
+}
+
+.qtype-pill:hover {
+    border-color: hsl(214, 55%, 74%);
+    color: hsl(220, 25%, 20%);
+}
+
+.qtype-pill:active {
+    transform: scale(0.97);
+}
+
+/* 选中态要足够明确——这排标签里同时只有一个是选中的，
+   靠边框深浅区分不够，直接反白 */
+.qtype-pill.active {
+    background: hsl(214, 84%, 51%);
+    border-color: hsl(214, 84%, 51%);
+    color: #ffffff;
+}
+
+.qtype-pill.active:hover {
+    background: hsl(214, 84%, 45%);
+    border-color: hsl(214, 84%, 45%);
+    color: #ffffff;
 }
 
 #practice-type-select {
@@ -288,26 +394,13 @@
 }
 
 /* Revision 筛选行 */
+/* 跟 Practice 那排完全一致，标签本身的样式复用 .qtype-pill */
 .revision-filter-row {
     display: flex;
-    gap: 24px;
+    align-items: center;
+    gap: 12px;
     flex-wrap: wrap;
     margin: 4px 0 20px;
-    font-size: 0.9rem;
-}
-
-.revision-filter-row label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 600;
-}
-
-.revision-filter-row select {
-    padding: 6px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--divider-color, #ddd);
-    font-size: 0.88rem;
 }
 
 /* "Go to Question" 按钮 */
@@ -508,226 +601,446 @@
 }
 
 /* ---------- Cribsheet Builder ---------- */
-.cribsheet-intro {
-    color: var(--weak-color, #666);
-    font-size: 0.9rem;
-    margin: 4px 0 20px;
+/*
+   这一整块是按「纸张是主角」重做的。核心判断：原来左边笔记库有底色填充，
+   跟画布是同一个视觉层级，所以在跟主体抢注意力。层级不靠给每块加个盒子来建立，
+   而是靠让主体成为页面上唯一有实体感的东西，其余全部退成文字和细线。
+
+   所以：笔记库去掉底色，只留一条竖细线；画布区域变成一块中性的「工作台」，
+   纸居中浮在上面带真实投影。整个界面里只有纸和主按钮是「实的」。
+
+   字体没有引新的（本地网络 CDN 常被墙，而且不改 HTML 加不了 link），
+   层次全部由字号、字重、字距、颜色承担——系统字体在这类工具型界面里本来就够用。
+*/
+
+/* 这一层的设计变量。范围限定在 Cribsheet 视图内，不影响站内其他页面。
+   弹窗也在这个容器里，所以能一起取到 */
+#revision-view-cribsheet {
+    --cs-ink: hsl(220, 20%, 15%);        /* 主文字 */
+    --cs-ink-soft: hsl(220, 9%, 45%);    /* 次要文字 */
+    --cs-ink-faint: hsl(220, 8%, 62%);   /* 图标、占位、计数 */
+    --cs-line: hsl(220, 14%, 91%);       /* 细线 */
+    --cs-line-strong: hsl(220, 13%, 84%);
+    --cs-surface: hsl(220, 24%, 97%);    /* 纸底下那块工作台 */
+    --cs-raised: #ffffff;                /* 纸、卡片 */
+    --cs-accent: hsl(214, 84%, 51%);     /* 唯一的强调色 */
+    --cs-accent-soft: hsl(214, 90%, 96%);
+    --cs-radius: 10px;
 }
 
+.cribsheet-intro {
+    max-width: 62ch;
+    margin: 0 0 28px;
+    color: var(--cs-ink-soft);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+/* 左窄右宽。左边收窄一点、间距拉开，让视线更快落到纸上 */
 .cribsheet-builder-layout {
     display: grid;
-    grid-template-columns: 260px 1fr;
-    gap: 24px;
+    grid-template-columns: 244px 1fr;
+    gap: 32px;
     align-items: start;
 }
 
 @media (max-width: 800px) {
     .cribsheet-builder-layout {
         grid-template-columns: 1fr;
+        gap: 24px;
     }
 }
 
-/* 左边：笔记库 */
+/* ---------- 左边：笔记库 ---------- */
+/* 没有底色、没有圆角盒子。只有一条竖细线把它和画布分开——
+   这是整个重做里最关键的一处改动 */
 .cribsheet-library-panel {
-    background: hsl(0, 0%, 98%);
-    border-radius: 12px;
-    padding: 16px;
-    max-height: 640px;
+    padding: 0 24px 0 0;
+    border-right: 1px solid var(--cs-line);
+    max-height: 720px;
     overflow-y: auto;
 }
 
+@media (max-width: 800px) {
+    .cribsheet-library-panel {
+        padding: 0 0 24px;
+        border-right: none;
+        border-bottom: 1px solid var(--cs-line);
+        max-height: none;
+    }
+}
+
 .cribsheet-library-panel h3 {
-    margin: 0 0 12px;
-    font-size: 1rem;
+    margin: 0 0 14px;
+    color: var(--cs-ink);
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
 }
 
+.cribsheet-library-search {
+    width: 100%;
+    padding: 9px 12px;
+    margin-bottom: 6px;
+    border: 1px solid var(--cs-line);
+    border-radius: 8px;
+    background: var(--cs-raised);
+    color: var(--cs-ink);
+    font-size: 0.85rem;
+    font-family: inherit;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cribsheet-library-search:focus {
+    outline: none;
+    border-color: var(--cs-accent);
+    box-shadow: 0 0 0 3px var(--cs-accent-soft);
+}
+
+.cribsheet-library-search::placeholder {
+    color: var(--cs-ink-faint);
+}
+
+/* 分类手风琴，一次只展开一个 */
 .cribsheet-library-category {
-    margin-bottom: 18px;
+    border-bottom: 1px solid var(--cs-line);
 }
 
-.cribsheet-library-category h4 {
-    margin: 0 0 6px;
-    font-size: 0.78rem;
+.cribsheet-library-category:last-child {
+    border-bottom: none;
+}
+
+.cribsheet-library-category-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 2px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+}
+
+/* 分类名是「眉标」：小字号 + 拉开字距。它是导航标签，不是内容，
+   压小之后视线会直接落到下面的笔记条目上 */
+.cribsheet-library-category-name {
+    flex: 1;
+    font-size: 0.7rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--weak-color, #888);
+    letter-spacing: 0.07em;
+    color: var(--cs-ink-faint);
+    transition: color 0.15s ease;
 }
 
+/* 折起来的时候也能知道这个分类里有多少条 */
+.cribsheet-library-category-count {
+    min-width: 20px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--cs-surface);
+    color: var(--cs-ink-faint);
+    font-size: 0.66rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+.cribsheet-library-category-chevron {
+    font-size: 0.62rem;
+    color: var(--cs-ink-faint);
+    transition: transform 0.2s ease;
+}
+
+.cribsheet-library-category.open .cribsheet-library-category-chevron {
+    transform: rotate(180deg);
+}
+
+.cribsheet-library-category.open .cribsheet-library-category-name {
+    color: var(--cs-ink);
+}
+
+/* 展开高度由 JS 按内容实测写进 max-height，这里只负责过渡和裁剪 */
+.cribsheet-library-category-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cribsheet-library-category.open .cribsheet-library-category-body {
+    padding-bottom: 10px;
+}
+
+/* 笔记条目做成卡片：留白更宽、圆角更大，鼠标移上去整体抬起来一点 */
 .cribsheet-library-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 10px;
     width: 100%;
-    padding: 8px 10px;
-    margin-bottom: 4px;
-    border: 1px solid var(--divider-color, #e2e2e2);
-    border-radius: 8px;
-    background: #ffffff;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border: 1px solid var(--cs-line);
+    border-radius: var(--cs-radius);
+    background: var(--cs-raised);
+    color: var(--cs-ink);
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 500;
     text-align: left;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
+    font-family: inherit;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .cribsheet-library-item:hover {
-    border-color: hsl(212, 70%, 60%);
+    border-color: hsl(214, 55%, 78%);
+    box-shadow: 0 4px 12px hsla(220, 30%, 20%, 0.09);
+    transform: translateY(-2px);
 }
 
-.cribsheet-library-item.added {
-    background: hsl(140, 45%, 95%);
-    border-color: hsl(140, 40%, 70%);
-    color: hsl(140, 45%, 30%);
+.cribsheet-library-item:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px hsla(220, 30%, 20%, 0.08);
+}
+
+/* 加号平时压得很淡，鼠标移上去才亮起来——它是操作提示，不该一直跟标题抢注意力 */
+.cribsheet-library-item .fa-plus {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    color: var(--cs-accent);
+    opacity: 0.22;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.cribsheet-library-item:hover .fa-plus {
+    opacity: 1;
+    background: var(--cs-accent-soft);
 }
 
 .cribsheet-library-item i {
-    font-size: 0.78rem;
-    color: hsl(212, 70%, 50%);
+    font-size: 0.72rem;
     flex-shrink: 0;
-    margin-left: 8px;
+}
+
+.cribsheet-library-item.added {
+    border-color: hsl(145, 40%, 74%);
+    background: hsl(145, 50%, 97%);
+    color: hsl(150, 40%, 28%);
 }
 
 .cribsheet-library-item.added i {
-    color: hsl(140, 50%, 40%);
+    color: hsl(148, 45%, 42%);
 }
 
 .cribsheet-library-item:disabled {
-    opacity: 0.6;
+    opacity: 0.55;
     cursor: default;
 }
 
-/* 右边：工具栏 */
+.cribsheet-add-custom-btn {
+    width: 100%;
+    margin-top: 14px;
+    padding: 10px;
+    border: 1px dashed var(--cs-line-strong);
+    border-radius: var(--cs-radius);
+    background: none;
+    color: var(--cs-ink-soft);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    font-family: inherit;
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.cribsheet-add-custom-btn:hover {
+    border-color: var(--cs-accent);
+    background: var(--cs-accent-soft);
+    color: var(--cs-accent);
+    transform: translateY(-1px);
+}
+
+.cribsheet-add-custom-btn:active {
+    transform: scale(0.98);
+}
+
+/* ---------- 工具栏 ---------- */
+/* 次要操作退成无边框的幽灵按钮，只有 Save as PDF 是填色的。
+   整条工具栏里只有一个「实心」元素，主操作在哪一眼就看到 */
 .cribsheet-sheet-toolbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
     gap: 10px;
+    flex-wrap: wrap;
     margin-bottom: 14px;
 }
 
 .cribsheet-toolbar-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
+    margin-left: auto;
 }
 
 .cribsheet-icon-btn {
-    width: 34px;
-    height: 34px;
-    border: 1px solid var(--divider-color, #ddd);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
     border-radius: 8px;
-    background: #ffffff;
-    color: var(--icon-color, #333);
+    background: none;
+    color: var(--cs-ink-soft);
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
+    transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .cribsheet-icon-btn:hover {
-    background: hsl(0, 0%, 96%);
+    background: var(--cs-surface);
+    color: var(--cs-ink);
+}
+
+/* 复制和删除只有先选中方块才有意义，没选中时压暗，选中后亮起来。
+   注意是压暗不是 disabled：没选中时点它仍然会弹提示告诉用户先选一个，
+   直接禁用的话点了毫无反应，反而更让人困惑 */
+#cribsheet-duplicate-selected-btn,
+#cribsheet-delete-selected-btn {
+    opacity: 0.3;
+    transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+#cribsheet-duplicate-selected-btn.cribsheet-btn-armed,
+#cribsheet-delete-selected-btn.cribsheet-btn-armed {
+    opacity: 1;
 }
 
 .cribsheet-text-btn {
-    padding: 8px 14px;
-    border: 1px solid var(--divider-color, #ddd);
+    padding: 7px 12px;
+    border: none;
     border-radius: 8px;
-    background: #ffffff;
-    color: var(--icon-color, #333);
-    font-size: 0.82rem;
-    font-weight: 600;
+    background: none;
+    color: var(--cs-ink-soft);
     cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    font-family: inherit;
+    transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .cribsheet-text-btn:hover {
-    background: hsl(0, 0%, 96%);
+    background: var(--cs-surface);
+    color: var(--cs-ink);
 }
 
+/* 分段控件：底槽是中性灰，选中那格浮起来一张白片 */
 .cribsheet-orientation-toggle {
-    display: flex;
-    gap: 4px;
-    background: hsl(0, 0%, 93%);
+    display: inline-flex;
     padding: 3px;
-    border-radius: 8px;
+    border-radius: 9px;
+    background: var(--cs-surface);
 }
 
 .cribsheet-orientation-toggle button {
     padding: 6px 14px;
     border: none;
-    border-radius: 6px;
-    background: transparent;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--weak-color, #666);
+    border-radius: 7px;
+    background: none;
+    color: var(--cs-ink-soft);
     cursor: pointer;
+    font-size: 0.79rem;
+    font-weight: 500;
+    font-family: inherit;
+    transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .cribsheet-orientation-toggle button.active {
-    background: #ffffff;
-    color: var(--icon-color, #222);
-    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.12);
+    background: var(--cs-raised);
+    color: var(--cs-ink);
+    box-shadow: 0 1px 3px hsla(220, 30%, 20%, 0.1);
 }
 
+/* 所有可点元素统一的按下反馈：按下去缩一点，松开弹回来。
+   浏览器默认的按钮按下没有任何反馈，加上之后点击才有「确实按到了」的手感 */
+.cribsheet-pdf-btn:active,
+.cribsheet-text-btn:active,
+.cribsheet-icon-btn:active,
+.cribsheet-add-custom-btn:active,
+.cribsheet-orientation-toggle button:active,
+.cribsheet-size-option:active,
+.cribsheet-modal-cancel-btn:active,
+.cribsheet-modal-next-btn:active {
+    transform: scale(0.97);
+}
+
+/* 整个界面里唯一填色的按钮 */
 .cribsheet-pdf-btn {
-    padding: 8px 18px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 16px;
     border: none;
-    border-radius: 8px;
-    background: hsl(207, 70%, 50%);
+    border-radius: 9px;
+    background: var(--cs-accent);
     color: #ffffff;
-    font-weight: 600;
-    font-size: 0.85rem;
     cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    box-shadow: 0 1px 2px hsla(214, 60%, 30%, 0.2);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
 
 .cribsheet-pdf-btn:hover {
-    background: hsl(207, 70%, 42%);
+    background: hsl(214, 84%, 45%);
+    box-shadow: 0 4px 14px hsla(214, 70%, 40%, 0.3);
+    transform: translateY(-1px);
 }
 
-.cribsheet-library-search {
-    width: 100%;
-    padding: 7px 10px;
-    margin-bottom: 12px;
-    border: 1px solid var(--divider-color, #ddd);
-    border-radius: 8px;
-    font-size: 0.85rem;
-    box-sizing: border-box;
+/* :active 的 scale 要盖过上面这条 translateY，写在后面靠源码顺序取胜 */
+.cribsheet-pdf-btn:active {
+    transform: scale(0.97);
 }
 
-.cribsheet-add-custom-btn {
-    width: 100%;
-    margin-top: 12px;
-    padding: 9px;
-    border: 1px dashed hsl(212, 60%, 60%);
-    border-radius: 8px;
-    background: hsl(212, 60%, 97%);
-    color: hsl(212, 70%, 42%);
-    font-weight: 600;
-    font-size: 0.85rem;
-    cursor: pointer;
-}
-
-.cribsheet-add-custom-btn:hover {
-    background: hsl(212, 60%, 93%);
-}
-
-/* 画布外层：负责居中 + 让页面在窄屏上能横向滚动，而不是硬挤压变形 */
+/* ---------- 画布：工作台 + 纸 ---------- */
+/* 纸不是直接贴在页面背景上的，底下有一块中性工作台，四周留出大片空白。
+   这是「纸放在桌上」的隐喻，也是让纸成为视觉主角最直接的办法 */
 .cribsheet-page-wrap {
+    padding: 36px 28px;
+    border-radius: 14px;
+    background: var(--cs-surface);
     overflow-x: auto;
-    padding: 4px;
 }
 
-/* 一页 Letter 纸——严格按照真实比例（竖版 8.5:11，横版 11:8.5），
-   用 aspect-ratio 保证不管在多宽的屏幕上，比例都不会走样；
-   真正"物理尺寸精确"这件事交给打印时的 @page 规则去保证，
-   这里的宽高只是编辑时的等比例预览 */
+@media (max-width: 640px) {
+    .cribsheet-page-wrap {
+        padding: 20px 14px;
+    }
+}
+
+/* 纸：整个界面里投影最重的东西，因为它是主角。
+   宽高比锁死 US Letter，这里的尺寸只是编辑时的等比例预览 */
 .cribsheet-page {
     position: relative;
-    background: #ffffff;
-    border: 1px solid var(--divider-color, #ddd);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
     width: 100%;
     max-width: 700px;
+    margin: 0 auto;
     aspect-ratio: 8.5 / 11;
     padding: 20px;
+    background: var(--cs-raised);
+    border-radius: 3px;
     box-sizing: border-box;
+    box-shadow:
+        0 1px 2px hsla(220, 30%, 20%, 0.06),
+        0 8px 28px hsla(220, 30%, 20%, 0.10);
+    transition: max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                aspect-ratio 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .cribsheet-page.landscape {
@@ -735,87 +1048,337 @@
     aspect-ratio: 11 / 8.5;
 }
 
-.grid-stack {
-    height: 100%;
+/* 拖动/缩放时浮出来的网格底。平时 opacity 是 0，纸就是白纸一张。
+   用伪元素而不是给 .cribsheet-page 加背景图，是因为背景图的原点会算上 padding，
+   跟真正的格子差 20px；伪元素直接 inset: 20px 就跟内容区严丝合缝了。
+   这里的数值必须跟 GridStack 的配置对上，画歪了比不画更误导：
+   竖线 = 12 列，所以每 100%/12 一条；横线 = cellHeight 28px；inset = 画布的 padding */
+.cribsheet-page::before {
+    content: '';
+    position: absolute;
+    inset: 20px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 0;
+    background-image:
+        repeating-linear-gradient(to right, hsl(214, 40%, 88%) 0 1px, transparent 1px calc(100% / 12)),
+        repeating-linear-gradient(to bottom, hsl(214, 30%, 92%) 0 1px, transparent 1px 28px);
 }
 
-.cribsheet-empty-hint {
+.cribsheet-page.cribsheet-show-grid::before {
+    opacity: 1;
+}
+
+/* 对齐参考线。颜色特意用洋红，跟蓝色的网格底区分开——
+   网格是「能放到哪儿」，参考线是「现在跟谁对齐了」，两件事不该看起来一样。
+   不加过渡：参考线要跟着鼠标即时出现和消失，慢一拍反而干扰判断 */
+.cribsheet-guide-layer {
+    position: absolute;
+    inset: 20px;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.cribsheet-guide {
+    position: absolute;
+    background: hsl(330, 85%, 58%);
+}
+
+.cribsheet-guide-v {
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    margin-left: -0.5px;
+}
+
+.cribsheet-guide-h {
+    left: 0;
+    right: 0;
+    height: 1px;
+    margin-top: -0.5px;
+}
+
+/* 中线对齐用虚线区分：边对边是硬对齐，中线对齐是次一级的信息 */
+.cribsheet-guide-center {
+    background: none;
+    opacity: 0.75;
+}
+
+.cribsheet-guide-center.cribsheet-guide-v {
+    border-left: 1px dashed hsl(330, 85%, 58%);
+}
+
+.cribsheet-guide-center.cribsheet-guide-h {
+    border-top: 1px dashed hsl(330, 85%, 58%);
+}
+
+.grid-stack {
+    height: 100%;
+    /* 卡片要盖在网格线上面 */
+    position: relative;
+    z-index: 1;
+}
+
+/* ---------- 空状态 ---------- */
+/* 空屏是邀请用户动手的地方，不是道歉的地方，所以文案直接说下一步做什么 */
+.cribsheet-canvas-empty {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    color: var(--weak-color, #888);
-    font-size: 0.9rem;
+    width: 78%;
     text-align: center;
-    width: 80%;
     pointer-events: none;
 }
 
-/* GridStack 方块本身的内容样式 */
+.cribsheet-canvas-empty-icon {
+    margin-bottom: 12px;
+    color: var(--cs-line-strong);
+    font-size: 1.9rem;
+}
+
+.cribsheet-canvas-empty-title {
+    margin: 0 0 6px;
+    color: var(--cs-ink-soft);
+    font-size: 0.92rem;
+    font-weight: 600;
+}
+
+.cribsheet-canvas-empty-subtext {
+    margin: 0;
+    color: var(--cs-ink-faint);
+    font-size: 0.8rem;
+    line-height: 1.6;
+}
+
+/* 行内的空提示（搜索无结果、尺寸预设为空），跟画布那个大空状态不是一回事 */
+.cribsheet-empty-hint {
+    margin: 8px 0;
+    color: var(--cs-ink-faint);
+    font-size: 0.82rem;
+    text-align: center;
+}
+
+/* ---------- 纸上的笔记卡片 ---------- */
+/* 卡片按「可以拿起来的实物」做：圆角、柔和投影、悬停微微抬起、拖动时整个浮起来。
+   GridStack 默认只负责把方块摆对位置，视觉反馈全部是在这一层包上去的 */
 .cribsheet-note-card {
     position: relative;
     width: 100%;
     height: 100%;
-    padding: 10px 26px 10px 12px;
-    border-left: 3px solid hsl(212, 70%, 55%);
-    background: hsl(212, 40%, 98%);
-    border-radius: 0 8px 8px 0;
+    padding: 12px 14px;
+    border: 1px solid hsl(214, 52%, 88%);
+    border-radius: 12px;
+    background: hsl(214, 45%, 98.5%);
     box-sizing: border-box;
     overflow: hidden;
     cursor: grab;
+    resize: none; /* 关掉浏览器原生的缩放手柄，避免跟 GridStack 自己的缩放逻辑打架 */
+    /* 卡片自己定一个字号基准，标题和正文都用 em 跟着它走。
+       这样样式面板上调一次字号，整张卡片一起缩放，不用分别设两处 */
+    font-size: 0.78rem;
+    box-shadow: 0 1px 2px hsla(214, 40%, 25%, 0.05);
+    transition:
+        background-color 0.18s ease,
+        border-color 0.18s ease,
+        box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 悬停时微微抬起。拖动进行中要排除掉，不然两个 transform 会打架 */
+/* 悬停和选中长得一样：边框略深一档，外层托一层淡蓝阴影，卡片本身不动。
+   阴影必须挂在 .grid-stack-item 上——卡片自己那层被 GridStack 的
+   .grid-stack-item-content 裹着，overflow 会把外阴影裁掉，散不出来。
+   选中跟「只是鼠标路过」的区别，靠的是上方浮出的样式工具条 */
+.grid-stack-item:not(.ui-draggable-dragging):hover .cribsheet-note-card,
 .grid-stack-item.cribsheet-item-selected .cribsheet-note-card {
-    outline: 2px solid hsl(212, 90%, 55%);
-    outline-offset: 1px;
+    border-color: hsl(214, 62%, 78%);
 }
 
+.grid-stack-item:not(.ui-draggable-dragging):hover,
+.grid-stack-item.cribsheet-item-selected {
+    box-shadow: 0 2px 8px hsla(214, 70%, 45%, 0.16);
+}
+
+/* 悬停时标题再深一档，正文不动——让层级在「被注意到」的那一刻更明确 */
+.grid-stack-item:hover .cribsheet-note-title {
+    color: hsl(220, 30%, 11%);
+}
+
+/* 拖动中：整张卡浮起来——放大一点、投影拉长、透明度稍降，
+   让人一眼看出「这张正拿在手上」，跟躺在纸上的那些区分开 */
+.grid-stack-item.ui-draggable-dragging {
+    z-index: 20;
+}
+
+.grid-stack-item.ui-draggable-dragging .cribsheet-note-card {
+    transform: scale(1.03);
+    opacity: 0.94;
+    cursor: grabbing;
+    border-color: hsl(214, 60%, 72%);
+    box-shadow: 0 12px 32px hsla(214, 45%, 22%, 0.22);
+}
+
+/* 新加进画布的卡片有个落下的动画。
+   只在用户真的添加时播——程序化重建画布（页面加载、撤销恢复）时
+   isCribsheetRestoring 是 true，那时候几十张卡一起弹会很吵 */
+@keyframes cribsheetCardDropIn {
+    from {
+        opacity: 0;
+        transform: scale(0.92) translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.cribsheet-note-card.cribsheet-just-added {
+    animation: cribsheetCardDropIn 0.22s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+/* 删除时先缩一点、淡出，再真正从 DOM 里拿掉。
+   瞬间消失会让人怀疑是不是点错了，收一下才像是「确实删掉了」 */
+@keyframes cribsheetCardRemove {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+}
+
+.cribsheet-note-card.cribsheet-removing {
+    animation: cribsheetCardRemove 0.16s ease forwards;
+    pointer-events: none;
+}
+
+/* 拖动时 GridStack 会在目标位置放一个占位块，标出松手后会落在哪。
+   默认长相很朴素，这里包成一个虚线框的落点提示 */
+@keyframes cribsheetPlaceholderIn {
+    from {
+        opacity: 0;
+        transform: scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.grid-stack-placeholder > .placeholder-content,
+.grid-stack-placeholder .placeholder-content {
+    border: 1px dashed hsl(214, 65%, 66%);
+    border-radius: 12px;
+    background: hsla(214, 80%, 60%, 0.08);
+    box-shadow: none;
+    animation: cribsheetPlaceholderIn 0.16s ease;
+}
+
+/* 选中态：Figma 那种精确的细描边，不要粗框。
+   必须用 inset——画在元素外面的 outline / 外阴影会被 GridStack 那层
+   .grid-stack-item-content 的 overflow 裁掉，根本看不见 */
+/* 阴影是挂在这一层的（卡片自己那层被 .grid-stack-item-content 的 overflow 裁掉），
+   但这一层默认是方角的，而卡片是 12px 圆角——不对齐的话辉光会从四个角漏出来，
+   看起来像卡片背后多了一层浅蓝底，而不是一圈干净的投影 */
+.grid-stack-item {
+    border-radius: 12px;
+    transition: box-shadow 0.18s ease;
+}
+
+/* 缩放手柄：平时完全不显示，只有选中之后才在右下角露出一个小方块，
+   跟 Figma 的选中把手一样。感应区域仍然比看到的方块大，好抓 */
+.grid-stack-item > .ui-resizable-handle {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.grid-stack-item > .ui-resizable-se {
+    width: 16px;
+    height: 16px;
+    right: 0;
+    bottom: 0;
+}
+
+/* 标题和正文拉开层级：标题更重更深，正文退成次要信息。
+   原来两者字重和颜色太接近，扫一眼分不出哪个是词条 */
 .cribsheet-note-title {
-    margin: 0 0 4px;
-    font-weight: 700;
-    font-size: 0.85rem;
+    margin: 0 0 5px;
+    font-weight: 650;
+    font-size: 1.12em;
+    line-height: 1.3;
+    letter-spacing: -0.005em;
+    color: hsl(220, 22%, 18%);
 }
 
 .cribsheet-note-content {
     margin: 0;
-    font-size: 0.78rem;
-    line-height: 1.45;
-    color: #333;
+    font-size: 0.96em;
+    line-height: 1.5;
+    color: hsl(220, 10%, 38%);
     overflow: hidden;
+    /* 笔记正文放在 <p> 里，默认会把换行和连续空格全折叠掉，多行代码会挤成一行。
+       这是个写代码笔记的场景，缩进和换行都是有意义的，所以保留原样 */
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
+/* 删除按钮平时藏起来，鼠标移到卡片上才浮出来。
+   它是偶尔用一次的操作，没必要一直跟正文抢注意力。
+   注意卡片的右内边距没有跟着收窄——收了的话按钮一出现就会压住文字 */
 .cribsheet-note-remove {
     position: absolute;
-    top: 6px;
-    right: 6px;
+    top: 7px;
+    right: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
     background: none;
     border: none;
-    color: var(--weak-color, #999);
+    border-radius: 5px;
+    color: var(--cs-ink-faint, hsl(220, 8%, 62%));
     cursor: pointer;
-    font-size: 0.8rem;
-    padding: 3px;
+    font-size: 0.72rem;
+    padding: 0;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.grid-stack-item:hover .cribsheet-note-remove,
+.cribsheet-note-remove:focus-visible {
+    opacity: 1;
 }
 
 .cribsheet-note-remove:hover {
-    color: hsl(0, 65%, 55%);
+    background: hsl(0, 75%, 96%);
+    color: hsl(0, 65%, 52%);
 }
 
+/* ---------- 纸下面的自由文本笔记（阶段1 就有的功能） ---------- */
 .cribsheet-my-notes-section {
-    margin-top: 24px;
-    padding-top: 18px;
-    border-top: 1px dashed var(--divider-color, #ddd);
+    margin-top: 32px;
+    padding-top: 28px;
+    border-top: 1px solid var(--cs-line);
 }
 
 .cribsheet-my-notes-section h4 {
     margin: 0;
+    color: var(--cs-ink);
     font-size: 0.95rem;
+    font-weight: 600;
 }
 
 /* ---------- 选尺寸 / 自定义笔记 的弹窗 ---------- */
 .cribsheet-modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: hsla(220, 30%, 12%, 0.45);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -824,16 +1387,21 @@
 
 .cribsheet-modal {
     background: #ffffff;
-    border-radius: 14px;
-    padding: 26px;
-    width: 360px;
+    border-radius: 16px;
+    padding: 28px;
+    width: 380px;
     max-width: 90vw;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    box-shadow:
+        0 1px 3px hsla(220, 30%, 20%, 0.1),
+        0 18px 50px hsla(220, 30%, 15%, 0.22);
 }
 
 .cribsheet-modal h3 {
-    margin: 0 0 16px;
-    font-size: 1.05rem;
+    margin: 0 0 18px;
+    color: var(--cs-ink, hsl(220, 20%, 15%));
+    font-size: 1.02rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
 }
 
 .cribsheet-modal label {
@@ -852,6 +1420,12 @@
     font-size: 0.88rem;
     font-family: inherit;
     box-sizing: border-box;
+}
+
+.cribsheet-size-hint {
+    margin: 0 0 4px;
+    font-size: 0.78rem;
+    color: var(--weak-color, #888);
 }
 
 .cribsheet-size-options {
@@ -885,6 +1459,19 @@
 .cribsheet-size-option-dims {
     color: var(--weak-color, #888);
     font-size: 0.8rem;
+}
+
+/* 编辑弹窗里的提示条：只有编辑"引用笔记库"的方块时才显示，
+   告诉学生保存之后这条会变成自己的副本，公共笔记库不受影响 */
+.cribsheet-edit-warning {
+    margin: 0 0 4px;
+    padding: 9px 11px;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: hsl(32, 55%, 26%);
+    background: hsl(45, 92%, 95%);
+    border-left: 3px solid hsl(38, 85%, 55%);
+    border-radius: 6px;
 }
 
 .cribsheet-modal-actions {
@@ -925,6 +1512,253 @@
     background: hsl(207, 70%, 42%);
 }
 
+/* ---------- 浮动样式工具条（选中方块时浮在它上方） ---------- */
+/*
+   放在 .cribsheet-page 内部用 absolute 定位。上一版是 position: fixed + 视口坐标，
+   在这个页面上会跑到窗口外面去（祖先链上任何一个 transform/filter 都会让 fixed 失效，
+   而站内其他 CSS 文件查不到）。改成相对纸张定位之后，坐标只需要算
+   「选中方块相对纸左上角的位置」，不碰视口、不用监听滚动，从结构上就不会算错。
+
+   它是覆盖层：不占文档流，出现和消失都不会推动画布里的任何东西。
+   全程只有这一个实例，切换选中的方块时是平移过去，不是销毁重建——
+   所以 left/top 上挂了过渡，换一张卡它会滑过去而不是闪一下。
+*/
+.cribsheet-style-bar {
+    position: absolute;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 5px 7px;
+    border-radius: 999px;
+    background: hsl(220, 8%, 13%);
+    box-shadow:
+        0 2px 6px hsla(220, 40%, 5%, 0.24),
+        0 10px 28px hsla(220, 40%, 5%, 0.30);
+
+    /* 隐藏态。用 visibility 而不是 display:none —— display:none 量不到自身宽高，
+       没法算居中，而且没有过渡可言。延迟切换 visibility 是为了让淡出动画播完 */
+    visibility: hidden;
+    opacity: 0;
+    transform: translate(-50%, 6px);
+    transition:
+        opacity 0.17s ease,
+        transform 0.17s ease,
+        left 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+        top 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+        visibility 0s linear 0.17s;
+}
+
+.cribsheet-style-bar.is-visible {
+    visibility: visible;
+    opacity: 1;
+    transform: translate(-50%, 0);
+    transition:
+        opacity 0.17s ease,
+        transform 0.17s ease,
+        left 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+        top 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+        visibility 0s linear 0s;
+}
+
+/* 摆到方块下方时（上面放不下），淡入方向跟着翻过来，从上往下落 */
+.cribsheet-style-bar.is-below {
+    transform: translate(-50%, -6px);
+}
+
+.cribsheet-style-bar.is-below.is-visible {
+    transform: translate(-50%, 0);
+}
+
+/* 拖动方块的时候工具条要即时跟随，位置上的过渡会拖后腿，临时关掉 */
+.cribsheet-style-bar.is-tracking {
+    transition:
+        opacity 0.17s ease,
+        transform 0.17s ease,
+        visibility 0s linear 0s;
+}
+
+.cribsheet-style-divider {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    background: hsla(0, 0%, 100%, 0.14);
+}
+
+/* 无边框图标按钮，悬停才出一层很淡的底 */
+.cribsheet-style-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 999px;
+    background: none;
+    color: hsla(0, 0%, 100%, 0.72);
+    cursor: pointer;
+    font-size: 0.74rem;
+    font-family: inherit;
+    transition: background-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
+}
+
+.cribsheet-style-toggle:hover {
+    background: hsla(0, 0%, 100%, 0.12);
+    color: #ffffff;
+    transform: scale(1.05);
+}
+
+.cribsheet-style-toggle:active {
+    transform: scale(0.95);
+}
+
+/* 开关状态必须一眼看得出来——加粗斜体这种，看不出当前是开是关就没法用 */
+.cribsheet-style-toggle.active {
+    background: #ffffff;
+    color: hsl(220, 10%, 14%);
+}
+
+/* 字号：一个图标加一个紧凑的下拉 */
+.cribsheet-style-size-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 6px 0 8px;
+    border-radius: 999px;
+    color: hsla(0, 0%, 100%, 0.72);
+    cursor: pointer;
+    font-size: 0.72rem;
+    transition: background-color 0.14s ease;
+}
+
+.cribsheet-style-size-wrap:hover {
+    background: hsla(0, 0%, 100%, 0.12);
+}
+
+.cribsheet-style-size-wrap select {
+    border: none;
+    background: none;
+    color: #ffffff;
+    font-size: 0.74rem;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 0;
+    outline: none;
+}
+
+/* 下拉展开的列表由系统绘制，深色背景上默认是白底黑字，
+   这里把选项的配色补回来，免得展开的一瞬间刺眼 */
+.cribsheet-style-size-wrap select option {
+    background: hsl(220, 8%, 16%);
+    color: #ffffff;
+}
+
+/* 颜色选择器：原生控件在深色条上很难看，用一个圆形色块盖住它，
+   真正的 input 透明地铺在上面负责点击和取色 */
+.cribsheet-style-swatch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    color: hsla(0, 0%, 100%, 0.72);
+    cursor: pointer;
+    font-size: 0.72rem;
+    transition: background-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
+}
+
+.cribsheet-style-swatch:hover {
+    background: hsla(0, 0%, 100%, 0.12);
+    color: #ffffff;
+    transform: scale(1.05);
+}
+
+.cribsheet-style-swatch input[type="color"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: none;
+    opacity: 0;
+    cursor: pointer;
+}
+
+/* ---------- 降低动态效果 ---------- */
+/* 系统里开了「减少动态效果」的用户（前庭功能敏感、晕动症等）需要把位移和缩放去掉。
+   这一段必须跟上面的交互样式同步维护——新加一个 transform 或 animation 就要在这里补一条 */
+@media (prefers-reduced-motion: reduce) {
+    .cribsheet-page,
+    .cribsheet-page::before,
+    .cribsheet-note-card,
+    .cribsheet-note-remove,
+    .grid-stack-item,
+    .cribsheet-library-item,
+    .cribsheet-library-item .fa-plus,
+    .cribsheet-library-category-body,
+    .cribsheet-library-category-chevron,
+    .cribsheet-library-search,
+    .cribsheet-add-custom-btn,
+    .cribsheet-icon-btn,
+    .cribsheet-text-btn,
+    .cribsheet-orientation-toggle button,
+    .cribsheet-pdf-btn,
+    .cribsheet-style-bar,
+    .cribsheet-style-toggle,
+    .cribsheet-style-swatch,
+    .cribsheet-style-size-wrap {
+        transition: none !important;
+    }
+
+    /* 所有位移和缩放一律取消 */
+    .qtype-pill,
+    .cribsheet-library-item:hover,
+    .cribsheet-library-item:active,
+    .grid-stack-item:not(.ui-draggable-dragging):hover .cribsheet-note-card,
+    .grid-stack-item.ui-draggable-dragging .cribsheet-note-card,
+    .cribsheet-pdf-btn:hover,
+    .cribsheet-pdf-btn:active,
+    .cribsheet-text-btn:active,
+    .cribsheet-icon-btn:active,
+    .cribsheet-add-custom-btn:hover,
+    .cribsheet-add-custom-btn:active,
+    .cribsheet-orientation-toggle button:active,
+    .cribsheet-size-option:active,
+    .cribsheet-modal-cancel-btn:active,
+    .cribsheet-modal-next-btn:active,
+    .cribsheet-style-toggle:hover,
+    .cribsheet-style-toggle:active,
+    .cribsheet-style-swatch:hover,
+    .qtype-pill:active {
+        transform: none;
+    }
+
+    .cribsheet-note-card.cribsheet-just-added,
+    .grid-stack-placeholder .placeholder-content {
+        animation: none;
+    }
+
+    /* 删除动画是个例外，不能整个关掉：JS 是等这段时长走完才把节点从 DOM 里摘掉的，
+       animation: none 之后 animation 时长归零但移除逻辑仍按固定延时执行，
+       中间那段时间卡片会原样杵在那儿。所以这里保留时长，只把它变成纯淡出 */
+    .cribsheet-note-card.cribsheet-removing {
+        animation: cribsheetCardRemove 0.16s linear forwards;
+    }
+
+    /* 工具条的淡入淡出保留（不涉及位移，只是透明度），
+       但位置切换的滑动去掉，直接跳到新位置 */
+    .cribsheet-style-bar,
+    .cribsheet-style-bar.is-visible {
+        transition: opacity 0.15s ease, visibility 0s;
+        transform: translate(-50%, 0);
+    }
+}
+
 /* ---------- 打印专用：只留下 Cribsheet 那一页，其他所有东西都藏起来 ---------- */
 @media print {
     body * {
@@ -946,11 +1780,24 @@
         padding: 0.3in;
         box-sizing: border-box;
     }
+    .cribsheet-page::before,
+    .cribsheet-guide-layer,
     .cribsheet-note-remove,
     .cribsheet-empty-hint,
-    .grid-stack-item.cribsheet-item-selected .cribsheet-note-card {
+    .cribsheet-canvas-empty,
+    .cribsheet-style-bar {
         display: none !important;
+    }
+    /* 选中高亮只是编辑时的视觉提示，打印出来不该有——但这里只能去掉高亮，
+       不能把卡片本身藏掉。原来这条选择器跟上面两个共用一条 display:none，
+       结果只要打印时有方块处于选中状态，那张笔记就整个不会出现在 PDF 里 */
+    .grid-stack-item.cribsheet-item-selected,
+    .grid-stack-item.cribsheet-item-selected .cribsheet-note-card {
         outline: none !important;
+        box-shadow: none !important;
+    }
+    .grid-stack-item.cribsheet-item-selected .cribsheet-note-card {
+        border-color: hsl(214, 52%, 88%) !important;
     }
     .crib-sheet-actions {
         display: none; /* My Notes 那个 Save 按钮打印的时候也不需要 */
