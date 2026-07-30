@@ -9,15 +9,9 @@
     --logo-height: 49px;
     --logo-width: 50px;
 
-    /* 顶部导航栏的高度。侧边栏要贴在它下面，所以两边共用这一个值。
-       导航栏改了 padding 或字号，这里跟着改，侧边栏会自动对齐 */
+    /* 顶部导航栏的高度 */
     --nav-height: 52px;
 
-    /* 侧边栏宽度。调这一个数就行，.sidebar 用的是这个变量。
-       ⚠️ 注意：导航栏的 Test 1-4 是在整个视口里居中的，它的左边缘位置
-       会随窗口宽度浮动，所以这个值只能在某一个特定窗口宽度下跟它对齐，
-       窗口一拉伸就又错开了。要彻底对齐得让导航栏也留出等宽的一块。 */
-    --sidebar-width: 213px;
 
     /* 题目区块相关变量（testing-engine.css 会用到，放在这里统一管理设计token） */
     --code-bg: hsl(0, 0%, 96%);
@@ -174,10 +168,10 @@ body{
 
 
 
-/* sidebar 和 content 的外层容器，让两者用 flex 并排显示 */
+/* 切换器和内容上下堆叠。原来是 sidebar 和 content 左右并排的 */
 .main-layout {
     display: flex;
-    align-items: flex-start;   /* sidebar 和 content 顶部对齐 */
+    flex-direction: column;
     /* gap 去掉了：侧边栏自己带右边线，内容区自己带左内距，
        两者之间不该再有一段透出页面背景的缝——那正是「浮动卡片」的观感来源 */
     flex: 1 0 auto;             /* 撑满剩余空间，把 footer 推到窗口底部 */
@@ -186,149 +180,177 @@ body{
 
 
 
-/* 侧边栏 */
-/* 应用外壳里的常驻导航，不是一张浮在页面上的卡片。
-   所以：没有圆角、没有投影、没有外边距，只有一条右边线把它和内容分开，
-   高度顶满视口——从视觉上它是页面结构的一部分，而不是摆在页面上的一个部件。 */
-.sidebar {
-    width: var(--sidebar-width);
-    flex-shrink: 0;
-    padding: 14px 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    box-sizing: border-box;
-
-    /* 纯色底，不做渐变。颜色由 JS 按 Test 分类写进 --sidebar-tint
-       （绿 → 黄 → 橙 → 红，跟导航栏的色阶一致）。
-       没拿到变量之前用浅白兜底，避免首屏闪一下透明 */
-    background-color: var(--sidebar-tint, hsl(0, 0%, 98%));
-    border-right: 1px solid hsla(220, 20%, 84%, 0.9);
+/* ---------- 板块切换器 ---------- */
+/* 取代原来的侧边栏。三个板块横向平铺，省下左边那 213px 给正文。
+   为什么不做成真正的轮播（选中项永远转到中间）：只有三个项，
+   它们本来就全部可见，转起来没有隐藏任何东西，却带来了
+   "Practice 的上一个是谁" 这种循环顺序的困惑，以及两端的空位。
+   这里标签位置固定，滑动的是那张白卡——动画反而更顺。 */
+.section-switcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    align-self: flex-start;
+    /* 直接坐在原来 <h2> 的位置，由这个组件充当页面标题
+       （Practice 那个 <h2> 已经删掉了）。
+       不套胶囊容器：那会让它读起来像个控件而不是标题，
+       只留文字和两侧箭头，层级靠字号本身建立 */
+    margin: 40px 0 28px 46px;
+    padding: 0;
+    background: none;
+    border: none;
     border-radius: 0;
     box-shadow: none;
-    margin: 0;
-
-    /* 贴在导航栏正下方，并一直顶到视口底部。
-       内容很长的时候导航会跟着停在原地，不会滚走 */
-    position: sticky;
-    top: var(--nav-height);
-    height: calc(100vh - var(--nav-height));
-    z-index: 90;
-
-    transition: opacity 0.4s ease, transform 0.4s ease, width 0.4s ease,
-                margin 0.4s ease, padding 0.4s ease, border-width 0.4s ease,
-                background-color 0.4s ease;
-
-    opacity: 0;
-    animation: fadeIn 0.9s ease forwards;
+    max-height: 80px;
+    transition: opacity 0.28s ease, transform 0.28s ease, margin 0.28s ease,
+                padding 0.28s ease, max-height 0.28s ease;
 }
 
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.sidebar-item {
+/* 轨道：三个标签同时可见——中间那个大而深，两侧小而灰，是"预览"。
+   宽度和每个标签的横向位置都由 JS 实测后写成内联样式，
+   因为三个词长短不一，位置得按各自的实际宽度算才均匀。
+   这里的 280px 只是脚本没跑起来时的兜底 */
+.switcher-track {
     position: relative;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 11px 11px;
-    border-radius: 7px;
+    width: 280px;
+    height: 52px;
+    transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.switcher-item {
+    position: absolute;
+    top: 50%;
+    left: 50%;
     text-decoration: none;
-    color: hsl(220, 10%, 38%);
-    font-size: 1.15rem;
-    font-weight: 500;
-    transition: background-color 0.16s ease, color 0.16s ease;
-}
-
-/* 图标定宽，三行的文字才会左对齐——图标本身宽度不一，不定宽会参差 */
-.sidebar-item .icon {
-    width: 20px;
+    cursor: pointer;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    white-space: nowrap;
     text-align: center;
-    font-size: 1.1rem;
-    line-height: 1;
-    color: hsl(220, 8%, 56%);
-    transition: color 0.16s ease;
+    /* 连点切换的时候不要把这个词选中变成高亮的蓝块 */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+
+    /* 两侧的缩小用 scale 而不是 font-size：
+       font-size 会改变元素的布局宽度，而下面的横向位置是按宽度算出来的，
+       两个动画互相追着跑，切换时会抖。scale 不影响布局宽度，量出来的值稳定 */
+    --x: 0px;
+    --scale: 0.5;
+    transform: translate(-50%, -50%) translateX(var(--x)) scale(var(--scale));
+    transform-origin: center center;
+
+    /* 侧项：小、灰、半透明，读起来是"下一个是什么"的提示，不是可选项之一 */
+    color: hsl(220, 9%, 58%);
+    opacity: 0.55;
+
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.28s ease,
+                color 0.28s ease,
+                text-shadow 0.2s ease;
 }
 
-.sidebar-item:hover {
-    background-color: hsla(220, 30%, 45%, 0.06);
-    color: hsl(220, 20%, 18%);
+/* 侧项只显示首字母，当前项显示全称。
+   文字由伪元素输出，内容从 data-* 读——直接写在标签里的话没法用 CSS 截字符。
+   注意：伪元素的内容读屏软件不一定读得到，所以标签里另外放了一个
+   .switcher-sr，视觉上藏起来，读屏软件读到的始终是完整单词 */
+.switcher-item::before {
+    content: attr(data-initial);
 }
 
-.sidebar-item:hover .icon {
-    color: hsl(220, 15%, 35%);
+.switcher-item.active::before {
+    content: attr(data-label);
 }
 
-/* 选中项：一层很淡的底 + 左边一道细条 + 字重加一档。
-   没有白卡、没有投影——那是「浮起来的部件」的语言，不是导航项的语言 */
-.sidebar-item.active,
-.sidebar-item.active:hover {
-    background-color: hsla(214, 60%, 50%, 0.09);
-    color: hsl(220, 25%, 14%);
-    font-weight: 600;
+/* ---------- 子页标题模式 ---------- */
+/* 进到 Revision 的子页时，切换器整个变成一个静态标题。
+   三个标签全藏掉，标题由容器的伪元素输出，内容从 data-subpage-title 读——
+   跟侧项显示首字母是同一套做法：文字放在属性上，由 CSS 决定显示哪个。
+   字号和位置跟当前项完全一致，所以切进子页时视觉上是"原地换词"，不会跳 */
+.section-switcher.is-subpage .switcher-item {
+    opacity: 0;
+    pointer-events: none;
 }
 
-.sidebar-item.active .icon {
-    color: var(--blue);
+.section-switcher.is-subpage .switcher-track::after {
+    content: attr(data-subpage-title);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: hsl(220, 28%, 11%);
 }
 
-.sidebar-item.active::before {
+/* 当前项：恢复原尺寸、用最深的颜色。
+   --scale 回到 1 是关键——不设的话它会沿用上面的默认值 0.5，
+   当前项就跟侧项一样是缩小的灰字，看起来像没选中 */
+.switcher-item.active {
+    --scale: 1;
+    color: hsl(220, 28%, 11%);
+    opacity: 1;
+}
+
+/* 视觉隐藏但保留给读屏软件。不能用 display: none 或 visibility: hidden，
+   那样读屏软件也读不到了 */
+.switcher-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* 侧项只有一个字母，点击区域太小很难点中。
+   用 ::after 撑出一块透明的热区，而不是给元素本身加 padding——
+   padding 会撑大 offsetWidth，而三个标签的横向位置是按宽度算出来的，
+   加了 padding 位置就全乱了。伪元素是绝对定位的，不参与布局宽度。
+   热区跟着 scale 一起缩小，所以要除以缩放比例才是屏幕上的实际大小 */
+.switcher-item::after {
     content: '';
     position: absolute;
-    left: -10px;          /* 顶到侧边栏的内边距外沿，贴着最左边 */
     top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 22px;
-    border-radius: 0 999px 999px 0;
-    background: var(--blue);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: calc(100% + 28px / var(--scale));
+    height: calc(1.6em / var(--scale));
 }
 
-/* ---------- 底部进度卡：目前只是毛胚 ---------- */
-/* ⚠️ 还没有接任何数据，就是个占位。虚线边框是刻意的，一眼能看出「这块还没做」。
-   这里不放假数字——项目从头到尾坚持「没有真实数据支撑就做成诚实的占位」。
-   以后接上真实数据时，把虚线换成实线、把 placeholder 那行换成内容即可。
-   margin-top: auto 把它压到侧边栏底部，靠的是上面那个 height: calc(100vh - ...) */
-.sidebar-progress {
-    margin-top: auto;
-    padding: 10px 11px;
-    border: 1px dashed hsla(220, 22%, 78%, 0.9);
-    border-radius: 8px;
+/* 当前项本来就够大，不需要额外热区 */
+.switcher-item.active::after {
+    width: 100%;
+    height: 1.6em;
 }
 
-.sidebar-progress-label {
-    display: block;
-    margin-bottom: 5px;
-    font-size: 0.66rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: hsl(220, 8%, 56%);
+/* 侧项悬停：变深一点 + 加投影。
+   不加背景色——那会让它看起来像个按钮，破坏"预览"的读法。
+   用 :not(.active) 限定，是因为当前项的悬停规则不一样：
+   它本来就是最深的颜色，再变色只会显得脏，所以只给投影 */
+.switcher-item:not(.active):hover {
+    opacity: 0.85;
+    color: hsl(220, 20%, 30%);
+    text-shadow: 0 2px 6px hsla(220, 30%, 25%, 0.28);
 }
 
-.sidebar-progress-placeholder {
-    margin: 0;
-    font-size: 0.74rem;
-    line-height: 1.45;
-    color: hsl(220, 8%, 62%);
+/* 当前项不需要这层投影，它已经是最重的那个了 */
+/* 当前项悬停：只加投影，颜色不动 */
+.switcher-item.active:hover {
+    text-shadow: 0 3px 8px hsla(220, 30%, 25%, 0.3);
 }
-
 
 /* 具体内容 */
 .content {
-    flex: 1;               /* 占满 sidebar 之外的剩余空间 */
+    flex: 1;
     min-width: 0;          /* flex 子项默认不会小于内容宽度，不加这行长内容会把布局撑破 */
-    padding: 22px 36px 0 32px;
-    margin-top: 0;
-    transition: padding-left 0.4s ease;         /* 原来这里有 65px，是为了跟浮动卡片式的 sidebar 对齐，现在不需要了 */
+    padding: 0 36px 0 52px;
 
     animation: contentFadeIn 0.9s ease forwards;
 }
@@ -359,75 +381,17 @@ body{
 }
 
 
-/* ---------- 侧边栏折叠 ---------- */
-/* 按钮是 fixed 定位、常驻在同一个位置的：收起之后侧边栏宽度为 0，
-   按钮要是放在里面就跟着消失了，就没法再展开。
-   放在固定位置还有个好处——展开和收起时按钮不动，点起来不用重新找 */
-/* 按钮在导航栏内部，靠 absolute 定位到左边那片空白上。
-   .nav-bar 是 sticky（已经是定位元素），所以这里的 absolute 就是相对它算的。
-   放在导航栏里而不是侧边栏里：侧边栏收起之后，按钮要是在里面就跟着消失了。
-   另外 .nav-bar 有 font-size: 0（消除内联元素间隙用的），
-   所以这里必须自己声明字号，不然图标会变成 0 大小看不见 */
-.sidebar-toggle {
-    position: absolute;
-    left: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    border: none;
-    border-radius: 7px;
-    background: none;
-    color: hsl(220, 10%, 45%);
-    cursor: pointer;
-    font-size: 0.95rem;
-    line-height: 1;
-    transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.sidebar-toggle:hover {
-    background-color: hsla(220, 30%, 45%, 0.1);
-    color: hsl(220, 20%, 18%);
-}
-
-.sidebar-toggle:active {
-    /* translateY 要带上——只写 scale 的话会把上面的垂直居中盖掉，按下去按钮会跳 */
-    transform: translateY(-50%) scale(0.94);
-}
-
-/* 收起状态。宽度和内边距一起归零，配合 overflow: hidden 把内容裁掉。
-   这里不动 opacity——.sidebar 上有个 animation-fill-mode: forwards 的淡入动画，
-   动画的最终值优先级高于普通声明，写 opacity 会被它盖掉不生效 */
-body.sidebar-collapsed .sidebar {
-    width: 0;
-    padding-left: 0;
-    padding-right: 0;
-    border-right-width: 0;
-    overflow: hidden;
-    pointer-events: none;
-}
-
-/* 侧边栏收起后左边少了一整块，内容稍微往里收一点，不要贴着窗口边缘 */
-body.sidebar-collapsed .content {
-    padding-left: 40px;
-}
-
-/* 考试专注模式：sidebar 和 navbar 平滑收起，而不是瞬间消失
+/* 考试专注模式：切换器和 navbar 平滑收起，而不是瞬间消失
    （由 testing-engine.js 里的 enterExamFocusMode / exitExamFocusMode 触发） */
 
-.sidebar.exam-focus-hide {
+.section-switcher.exam-focus-hide {
     opacity: 0;
-    transform: translateX(-24px);
-    width: 0;
-    padding: 0;
-    margin-left: 0;
-    margin-right: 0;
-    border-right-width: 0;   /* 边线也要收掉，不然收起后会留下一条竖线 */
+    transform: translateY(-10px);
+    max-height: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
     overflow: hidden;
     pointer-events: none;   /* 收起过程中不能被点到 */
 }
@@ -445,12 +409,6 @@ body.sidebar-collapsed .content {
     padding-top: 0;
     padding-bottom: 0;
     pointer-events: none;
-}
-
-/* sidebar 收起后，内容区左边距加宽一点，不要紧贴页面边缘 */
-body.exam-focus-mode .content {
-    padding-left: 90px;
-    transition: padding-left 0.4s ease;
 }
 
 /* footer 同样跟着一起收起；加载完成后由 JS 加上 .footer-loaded 才淡入显示，

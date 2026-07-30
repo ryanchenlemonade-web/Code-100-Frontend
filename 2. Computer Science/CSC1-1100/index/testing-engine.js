@@ -20,9 +20,29 @@ async function buildTestingPageSkeleton() {
 // 用在切换题型筛选、切换 Examination 年份版本时，让内容有个过渡效果，而不是生硬地瞬间替换
 function triggerFadeIn(el) {
     if (!el) return;
+
+    // 同一个元素可能被连续触发（比如快速切 Test），先取消上一次的清理定时器
+    if (el._fadeInTimer) clearTimeout(el._fadeInTimer);
+
+    el.style.opacity = '';
     el.style.animation = 'none';
     void el.offsetWidth;   // 强制重排，这一行不能删
     el.style.animation = 'contentFadeIn 0.9s ease forwards';
+
+    // 动画播完之后必须把 animation 清掉，原因不显然：
+    // contentFadeIn 的最后一帧是 transform: translateY(0)，而 fill-mode: forwards
+    // 会让这个值永久留在元素上。任何非 none 的 transform（哪怕是 translateY(0)
+    // 这种什么都不动的值）都会让该元素成为后代 position: fixed 的定位基准——
+    // 于是这个容器里的弹窗不再相对视口居中，而是相对这个很高的容器居中，
+    // 跑到页面下方去了。
+    //
+    // 清 animation 之前先把 opacity 固定成 1：.test-section 的基础样式里
+    // 有 opacity: 0，全靠 forwards 撑着，直接清掉元素会瞬间消失。
+    el._fadeInTimer = setTimeout(() => {
+        el.style.opacity = '1';
+        el.style.animation = '';
+        el._fadeInTimer = null;
+    }, 950);   // 比动画时长 0.9s 略长一点，确保播完
 }
 
 // 在题目容器里显示一个"加载中"的提示，请求还没回来之前用，避免用户以为卡住/出bug了。
@@ -110,6 +130,17 @@ function renderQuestionTypeFilter(container, onChange) {
 
 function getQuestionTypeFilterValue(container) {
     return container ? (container.dataset.value || '') : '';
+}
+
+// 难度徽章的色阶：越难越暖。分档跟着 5 星评分走——
+// 3 分以下算简单（绿），3 到 4.5 算中等（橙），4.5 以上算难（红）。
+// 边界取的是连续区间，不留空档，免得 2.7 分这种落不到任何一档
+function difficultyLevelClass(avgRating) {
+    const value = Number(avgRating);
+    if (!Number.isFinite(value)) return '';
+    if (value < 3) return 'difficulty-easy';
+    if (value < 4.5) return 'difficulty-medium';
+    return 'difficulty-hard';
 }
 
 // 记录当前登录用户标过重点的题目 id（进 Practice 页面时拉一次，用来决定每道题的星标要不要默认点亮）
@@ -239,6 +270,16 @@ function buildQuestionBlock(question, options = {}) {
         typeTag.className = 'question-type-tag';
         typeTag.textContent = formatQuestionType(question.question_category);
         labelRow.appendChild(typeTag);
+    }
+
+    // 难度徽章。只有真的有人评过分才显示——没有评分记录时 avg_rating 是空的，
+    // 那就什么都不放，不编一个默认难度出来
+    if (options.showDifficulty && question.rating_count) {
+        const difficultyTag = document.createElement('span');
+        difficultyTag.className = `question-difficulty-tag ${difficultyLevelClass(question.avg_rating)}`;
+        difficultyTag.innerHTML = `<i class="fa-solid fa-star"></i>${question.avg_rating}`;
+        difficultyTag.title = `Average difficulty ${question.avg_rating} from ${question.rating_count} rating${question.rating_count > 1 ? 's' : ''}`;
+        labelRow.appendChild(difficultyTag);
     }
 
     if (options.showGoToQuestion && question.paper_category) {
@@ -506,7 +547,7 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
                 });
 
                 data.forEach((question, index) => {
-                    const wrapper = buildQuestionBlock(question, { showYear: true, showType, displayNumber: index + 1, showStar: true, showRating: true, collapseLongCode: true });
+                    const wrapper = buildQuestionBlock(question, { showYear: true, showType, displayNumber: index + 1, showStar: true, showRating: true, showDifficulty: true, collapseLongCode: true });
 
                     if (question.question_solution) {
                         const toggleBtn = document.createElement('button');
@@ -858,6 +899,13 @@ function stopTestingTimer() {
 // ---------- Revision 页面：首页（两张卡片）+ 两个子板块之间的切换 ----------
 // 因为切 Test 分类时骨架会整个重新生成，这几个 view 元素每次都是新的节点，
 // 所以这个函数本身没有状态依赖，每次调用都是全新查一遍当前 DOM，不会有缓存过期的问题
+// 子页对应的标题。进到子页时上面那个板块切换器会整个变成这个标题，
+// 所以子页自己不再放 <h2>——两处写同一个词是迟早会不一致的
+const REVISION_VIEW_TITLES = {
+    'marked-questions': 'Marked Questions',
+    'cribsheet': 'Cribsheet Builder'
+};
+
 function showRevisionView(viewName) {
     document.querySelectorAll('.revision-view').forEach(v => v.classList.remove('active'));
     const target = document.getElementById(`revision-view-${viewName}`);
@@ -865,6 +913,13 @@ function showRevisionView(viewName) {
 
     target.classList.add('active');
     triggerFadeIn(target);
+
+    // 切换器变成子页标题；回到 landing 就恢复成三项轮滑。
+    // setSwitcherSubPageTitle 定义在 cs1_index.js 里，那个文件在这个之后加载，
+    // 但调用发生在用户点击之后，那时候它已经存在了
+    if (typeof setSwitcherSubPageTitle === 'function') {
+        setSwitcherSubPageTitle(REVISION_VIEW_TITLES[viewName] || null);
+    }
 
     if (viewName === 'marked-questions') {
         loadRevisionQuestions();
@@ -961,6 +1016,7 @@ function renderFilteredRevisionList() {
             displayNumber: index + 1,
             showStar: true,
             showGoToQuestion: true,
+            showDifficulty: true,
             collapseLongCode: true,
             // 备注输入框先去掉，之后想好新的记笔记方案再说；底层的 note 存储/接口先保留不动
             // 在 Revision 页面取消星标，直接把这道题从当前列表和缓存里移除，不用整页重新拉一次

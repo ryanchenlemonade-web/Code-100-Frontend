@@ -87,10 +87,10 @@
     color: hsl(214, 84%, 42%);
 }
 
-/* Practice 整体往右挪一点。加在这一段上而不是 .content 上——
-   .content 是 Practice / Examination / Revision 三个模式共用的容器，
-   改它的话另外两个会跟着一起动 */
-#practice-content {
+/* 三个板块的内容统一往右挪一点。
+   加在 .test-section 上而不是 .content 上，是因为 .content 还包着上面那个
+   板块切换器，改 .content 会把切换器一起推走 */
+.test-section {
     padding-left: 14px;
 }
 
@@ -103,7 +103,7 @@
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
-    margin-bottom: 20px;
+    margin-bottom: 30px;
 }
 
 .question-filter-label {
@@ -138,26 +138,31 @@
 }
 
 .qtype-pill:hover {
-    border-color: hsl(214, 55%, 74%);
+    border-color: hsl(216, 70%, 82%);
     color: hsl(220, 25%, 20%);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px hsla(220, 30%, 25%, 0.08);
 }
 
 .qtype-pill:active {
-    transform: scale(0.97);
+    transform: translateY(0) scale(0.97);
+    box-shadow: none;
 }
 
-/* 选中态要足够明确——这排标签里同时只有一个是选中的，
-   靠边框深浅区分不够，直接反白 */
+/* 选中态用淡蓝底 + 蓝字，不用纯蓝填充。
+   一排标签里同时只有一个选中，实心色块在这个位置太重，
+   会盖过旁边的题目内容；字重加一档补足存在感 */
 .qtype-pill.active {
-    background: hsl(214, 84%, 51%);
-    border-color: hsl(214, 84%, 51%);
-    color: #ffffff;
+    background: #E8F1FF;
+    border-color: hsl(216, 100%, 87%);
+    color: #1E6BFF;
+    font-weight: 600;
 }
 
 .qtype-pill.active:hover {
-    background: hsl(214, 84%, 45%);
-    border-color: hsl(214, 84%, 45%);
-    color: #ffffff;
+    background: hsl(216, 100%, 92%);
+    border-color: hsl(216, 90%, 82%);
+    color: #1E6BFF;
 }
 
 #practice-type-select {
@@ -246,6 +251,40 @@
 }
 
 /* Practice 模式选 "All" 题型时，标注每道题具体是什么类型（浅灰色，跟年份标签的蓝色区分开） */
+/* 难度徽章：跟年份、题型那两个标签同一档尺寸，摆在它们右边。
+   颜色按平均难度分三档，越难越暖——扫列表的时候不用逐个看星星
+   就知道哪些题硬。带个星形图标是为了让「4.5」这个数字有明确所指，
+   否则孤零零一个数看不出是什么 */
+.question-difficulty-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.question-difficulty-tag i {
+    font-size: 0.68rem;
+    opacity: 0.75;
+}
+
+.question-difficulty-tag.difficulty-easy {
+    background-color: hsl(142, 52%, 92%);
+    color: hsl(148, 55%, 27%);
+}
+
+.question-difficulty-tag.difficulty-medium {
+    background-color: hsl(32, 88%, 91%);
+    color: hsl(27, 72%, 33%);
+}
+
+.question-difficulty-tag.difficulty-hard {
+    background-color: hsl(0, 72%, 94%);
+    color: hsl(0, 58%, 41%);
+}
+
 .question-type-tag {
     display: inline-block;
     padding: 2px 10px;
@@ -386,6 +425,9 @@
     font-weight: 600;
     cursor: pointer;
     padding: 4px 0;
+    /* 往上收一点，贴近上面那个标题（标题由板块切换器提供）。
+       两个子页共用这一条，改一次两边都动 */
+    margin-top: -12px;
     margin-bottom: 16px;
 }
 
@@ -394,13 +436,19 @@
 }
 
 /* Revision 筛选行 */
+/* Revision 子页的标题（Marked Questions / Cribsheet Builder）。
+   原来没有规则，用的是浏览器默认外边距，跟下面的筛选行贴得太近 */
+.revision-view > h2 {
+    margin: 4px 0 26px;
+}
+
 /* 跟 Practice 那排完全一致，标签本身的样式复用 .qtype-pill */
 .revision-filter-row {
     display: flex;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
-    margin: 4px 0 20px;
+    margin: 0 0 30px;
 }
 
 /* "Go to Question" 按钮 */
@@ -973,7 +1021,6 @@
 .cribsheet-icon-btn:active,
 .cribsheet-add-custom-btn:active,
 .cribsheet-orientation-toggle button:active,
-.cribsheet-size-option:active,
 .cribsheet-modal-cancel-btn:active,
 .cribsheet-modal-next-btn:active {
     transform: scale(0.97);
@@ -1028,24 +1075,38 @@
    宽高比锁死 US Letter，这里的尺寸只是编辑时的等比例预览 */
 .cribsheet-page {
     position: relative;
-    width: 100%;
-    max-width: 700px;
+    /* 尺寸用【英寸】写死，就是一整张物理 Letter 纸。
+       这样打印时 8.5in 就是 8.5in，不需要任何缩放换算，
+       屏幕上看到的就是印出来的——由构造保证，不依赖倍数算得对。
+       （屏幕上按 CSS 标准 1in = 96px 渲染，也就是 816 × 1056px。）
+       
+       padding 0.4in 是页边距：真实打印机边缘有一圈印不到的区域，
+       @page 的 margin 设成了 0，所以边距得由纸张自己提供 */
+    width: 8.5in;
+    height: 11in;
+    flex-shrink: 0;
     margin: 0 auto;
-    aspect-ratio: 8.5 / 11;
-    padding: 20px;
+    /* 这两行是"纸张是固定尺寸"的最后一道保障。
+       只有 aspect-ratio 是不够的——内容比它高的时候元素照样会被撑长，
+       aspect-ratio 只是个建议值。加上 overflow: hidden 之后，
+       纸的比例和 Letter 严格一致，多出来的部分直接裁掉。
+       真正防止"放到纸外面"的是 GridStack 的 maxRow（见 getCribsheetMaxRow） */
+    overflow: hidden;
+    padding: 0.4in;
     background: var(--cs-raised);
     border-radius: 3px;
     box-sizing: border-box;
     box-shadow:
         0 1px 2px hsla(220, 30%, 20%, 0.06),
         0 8px 28px hsla(220, 30%, 20%, 0.10);
-    transition: max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-                aspect-ratio 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 横版就是把两个数对调：Letter 横放是 11in × 8.5in */
 .cribsheet-page.landscape {
-    max-width: 920px;
-    aspect-ratio: 11 / 8.5;
+    width: 11in;
+    height: 8.5in;
 }
 
 /* 拖动/缩放时浮出来的网格底。平时 opacity 是 0，纸就是白纸一张。
@@ -1062,7 +1123,7 @@
     transition: opacity 0.15s ease;
     z-index: 0;
     background-image:
-        repeating-linear-gradient(to right, hsl(214, 40%, 88%) 0 1px, transparent 1px calc(100% / 12)),
+        repeating-linear-gradient(to right, hsl(214, 40%, 88%) 0 1px, transparent 1px calc(100% / 24)),
         repeating-linear-gradient(to bottom, hsl(214, 30%, 92%) 0 1px, transparent 1px 28px);
 }
 
@@ -1082,7 +1143,7 @@
 
 .cribsheet-guide {
     position: absolute;
-    background: hsl(330, 85%, 58%);
+    background: hsl(330, 60%, 72%);
 }
 
 .cribsheet-guide-v {
@@ -1106,11 +1167,11 @@
 }
 
 .cribsheet-guide-center.cribsheet-guide-v {
-    border-left: 1px dashed hsl(330, 85%, 58%);
+    border-left: 1px dashed hsl(330, 60%, 72%);
 }
 
 .cribsheet-guide-center.cribsheet-guide-h {
-    border-top: 1px dashed hsl(330, 85%, 58%);
+    border-top: 1px dashed hsl(330, 60%, 72%);
 }
 
 .grid-stack {
@@ -1191,14 +1252,98 @@
    阴影必须挂在 .grid-stack-item 上——卡片自己那层被 GridStack 的
    .grid-stack-item-content 裹着，overflow 会把外阴影裁掉，散不出来。
    选中跟「只是鼠标路过」的区别，靠的是上方浮出的样式工具条 */
-.grid-stack-item:not(.ui-draggable-dragging):hover .cribsheet-note-card,
-.grid-stack-item.cribsheet-item-selected .cribsheet-note-card {
-    border-color: hsl(214, 62%, 78%);
+
+/* ---------- GridStack 24 列的宽度/位置规则 ---------- */
+/* 为什么需要手写这一段：
+   GridStack 靠 CSS 规则渲染方块的宽度和横向位置，形如
+     .gs-12 > .grid-stack-item[gs-w="4"] { width: 33.333% }
+   而它自带的 gridstack.min.css 只覆盖到 12 列。
+   我们把列数改成 24 之后，[gs-w="4"] 找不到对应规则，宽度就塌回最小值——
+   表现是 gs-w=4 明明在 DOM 上，卡片却只有一列宽。
+   （gridstack-extra.css 也不行，那个文件只覆盖 2-11 列。）
+
+   所以这里按 1/24 为单位把 24 组规则都列出来。
+   ⚠️ 改 CRIBSHEET_GRID_COLS 的话这一整段都要重新生成。 */
+.grid-stack.gs-24 > .grid-stack-item[gs-w="1"] { width: 4.166667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="2"] { width: 8.333333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="3"] { width: 12.5%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="4"] { width: 16.666667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="5"] { width: 20.833333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="6"] { width: 25%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="7"] { width: 29.166667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="8"] { width: 33.333333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="9"] { width: 37.5%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="10"] { width: 41.666667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="11"] { width: 45.833333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="12"] { width: 50%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="13"] { width: 54.166667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="14"] { width: 58.333333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="15"] { width: 62.5%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="16"] { width: 66.666667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="17"] { width: 70.833333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="18"] { width: 75%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="19"] { width: 79.166667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="20"] { width: 83.333333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="21"] { width: 87.5%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="22"] { width: 91.666667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="23"] { width: 95.833333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-w="24"] { width: 100%; }
+
+.grid-stack.gs-24 > .grid-stack-item[gs-x="1"] { left: 4.166667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="2"] { left: 8.333333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="3"] { left: 12.5%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="4"] { left: 16.666667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="5"] { left: 20.833333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="6"] { left: 25%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="7"] { left: 29.166667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="8"] { left: 33.333333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="9"] { left: 37.5%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="10"] { left: 41.666667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="11"] { left: 45.833333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="12"] { left: 50%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="13"] { left: 54.166667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="14"] { left: 58.333333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="15"] { left: 62.5%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="16"] { left: 66.666667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="17"] { left: 70.833333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="18"] { left: 75%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="19"] { left: 79.166667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="20"] { left: 83.333333%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="21"] { left: 87.5%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="22"] { left: 91.666667%; }
+.grid-stack.gs-24 > .grid-stack-item[gs-x="23"] { left: 95.833333%; }
+
+
+/* GridStack 自己生成的那层 .grid-stack-item-content 带白色底色，
+   而卡片是 12px 圆角——两者形状不一致，白底就会在卡片的四个圆角外
+   露出直角的一小块，看起来像"卡片外面套了个方框"。
+   这里让它跟卡片同圆角，白底和浅蓝细线就贴合成一体了。
+   inset: 0 是为了消掉两层之间可能的错位，让白底正好等于卡片的大小 */
+/* 关于"卡片四周那圈白框"：它不是任何元素的背景，而是纸张本身透出来的。
+   GridStack 的 margin: 4 让这一层内缩 4px，于是 item 四周有一圈 4px 的空隙，
+   透出白色的纸；而阴影原来挂在外层 .grid-stack-item 上，就绕在这圈空隙外面——
+   「卡片 → 4px 白纸 → 蓝阴影」，看起来就是个带阴影的白框。
+   
+   解法是把阴影挪到卡片自己身上（见下面的 .cribsheet-note-card 相关规则），
+   空隙还在但外面没有阴影包着，4px 就不会读成一个边框了。
+   
+   这里刻意【不】设 inset：那样虽然也能消掉空隙，但会覆盖 GridStack
+   按 margin 算出的定位，右下角缩放手柄就抓不到了。
+   overflow 必须是 visible：卡片的外阴影要能溢出这一层，否则又被裁掉 */
+#cribsheet-grid .grid-stack-item > .grid-stack-item-content {
+    background: none;
+    border: none;
+    box-shadow: none;
+    overflow: visible;
 }
 
-.grid-stack-item:not(.ui-draggable-dragging):hover,
-.grid-stack-item.cribsheet-item-selected {
-    box-shadow: 0 2px 8px hsla(214, 70%, 45%, 0.16);
+/* 悬停和选中只加一层淡蓝阴影，卡片本身的底色和边框都不动。
+   阴影挂在【卡片】上而不是外层 .grid-stack-item 上——挂外层的话
+   它会绕在那圈 4px 空隙外面，空隙里透出的白纸就被框成了一个白边。
+   代价是这层的 overflow 必须是 visible（上面已经设了），否则阴影被裁 */
+.grid-stack-item:not(.ui-draggable-dragging):hover .cribsheet-note-card,
+.grid-stack-item.cribsheet-item-selected .cribsheet-note-card {
+    box-shadow: 0 2px 12px hsla(214, 80%, 55%, 0.26);
 }
 
 /* 悬停时标题再深一档，正文不动——让层级在「被注意到」的那一刻更明确 */
@@ -1281,11 +1426,7 @@
 /* 选中态：Figma 那种精确的细描边，不要粗框。
    必须用 inset——画在元素外面的 outline / 外阴影会被 GridStack 那层
    .grid-stack-item-content 的 overflow 裁掉，根本看不见 */
-/* 阴影是挂在这一层的（卡片自己那层被 .grid-stack-item-content 的 overflow 裁掉），
-   但这一层默认是方角的，而卡片是 12px 圆角——不对齐的话辉光会从四个角漏出来，
-   看起来像卡片背后多了一层浅蓝底，而不是一圈干净的投影 */
 .grid-stack-item {
-    border-radius: 12px;
     transition: box-shadow 0.18s ease;
 }
 
@@ -1296,11 +1437,118 @@
     transition: opacity 0.15s ease;
 }
 
+/* ---------- 纸张顶部的姓名 / 考试名 ---------- */
+/* 纯粹是给打印用的填空，不存到任何地方——要打印时填一下，
+   打完这张纸就完成任务了。所以既没有后端字段，也没碰 localStorage */
+.cribsheet-sheet-header {
+    display: flex;
+    /* baseline 对齐的是 Name / Exam 两个字段里的文字基线。
+       水印内部是 align-items: center 的 flex，没有可参与的基线，
+       所以它单独用 align-self（见 .cribsheet-watermark 后面那条）
+       跟字段的文字底部对齐 */
+    align-items: baseline;
+    gap: 18px;
+    /* 不换行：换行会把纸张顶部撑高，进而挤掉网格能用的行数。
+       宁可让字段窄一点，也不能让这一行变成两行 */
+    flex-wrap: nowrap;
+    margin-bottom: 10px;
+}
+
+/* 左上角的水印。刻意做得很淡——它是出处标记，不该跟内容抢注意力 */
+.cribsheet-watermark {
+    display: inline-flex;
+    /* 用 center 让 logo 和 "Code 100" 这两个高度不同的东西自己对齐，
+       水印整体再通过下面的 align-self 去跟两个字段的基线对齐 */
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    opacity: 0.5;
+}
+
+.cribsheet-watermark img {
+    width: 26px;
+    height: 26px;
+    object-fit: contain;
+}
+
+/* 水印在表头里跟两个字段水平对齐。
+   父级是 align-items: baseline，但水印内部是 center 对齐的 flex 容器，
+   它自己的基线是最后一行文字——直接参与 baseline 会让 logo 沉下去。
+   改成 center 之后水印整体居中，视觉上跟字段那一行齐平 */
+.cribsheet-watermark {
+    align-self: center;
+}
+
+.cribsheet-watermark span {
+    font-size: 0.92rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: hsl(220, 15%, 40%);
+    white-space: nowrap;
+}
+
+.cribsheet-sheet-field {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+}
+
+/* 姓名比考试名长——名字的变化范围大得多，
+   而考试名基本就是 "Test 1" / "Final" 这种短词 */
+/* Name 只比 Exam 略宽一点。原来是 2:1，姓名栏占掉大半行显得太空 */
+.cribsheet-field-name {
+    flex: 1.25 1 0;
+}
+
+.cribsheet-field-exam {
+    flex: 1 1 0;
+}
+
+.cribsheet-sheet-field-label {
+    flex-shrink: 0;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: hsl(220, 10%, 55%);
+}
+
+/* 输入框做成一条下划线，不是方框——它在一张"纸"上，
+   方框会让整张纸看起来像网页表单 */
+.cribsheet-sheet-header input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: none;
+    border-bottom: 1px solid hsl(214, 40%, 82%);
+    border-radius: 0;
+    background: none;
+    padding: 1px 2px 2px;
+    font-family: inherit;
+    font-size: 0.78rem;
+    color: hsl(220, 25%, 15%);
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.cribsheet-sheet-header input[type="text"]:focus {
+    border-bottom-color: hsl(214, 84%, 55%);
+}
+
+.cribsheet-sheet-header input[type="text"]::placeholder {
+    color: hsl(220, 10%, 72%);
+}
+
+/* 缩放感应区：包住卡片的右下角。
+   尺寸做大到 24px 是因为它是不可见的——看不见的东西必须好抓。
+   z-index 要压过卡片，否则点到的是卡片、触发的是拖动而不是缩放 */
 .grid-stack-item > .ui-resizable-se {
-    width: 16px;
-    height: 16px;
+    width: 24px;
+    height: 24px;
     right: 0;
     bottom: 0;
+    z-index: 20;
+    cursor: se-resize;
 }
 
 /* 标题和正文拉开层级：标题更重更深，正文退成次要信息。
@@ -1374,7 +1622,7 @@
     font-weight: 600;
 }
 
-/* ---------- 选尺寸 / 自定义笔记 的弹窗 ---------- */
+/* ---------- 自定义笔记 / 编辑笔记 的弹窗 ---------- */
 .cribsheet-modal-backdrop {
     position: fixed;
     inset: 0;
@@ -1428,46 +1676,53 @@
     color: var(--weak-color, #888);
 }
 
-.cribsheet-size-options {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 16px;
+/* ---------- 编辑弹窗：浮在卡片旁边，不居中 ---------- */
+/* 遮罩透明：挡住的话就看不到正在编辑的那张卡，而"能一边看卡片一边改"
+   正是不居中的理由。仍然铺满视口，用来接住点击外部关闭。
+   flex 居中要取消掉，位置由 JS 写成内联的 left/top */
+.cribsheet-modal-backdrop-anchored {
+    display: block;
+    background: none;
 }
 
-.cribsheet-size-option {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    border: 1px solid var(--divider-color, #ddd);
-    border-radius: 8px;
-    background: #ffffff;
-    cursor: pointer;
-    font-size: 0.88rem;
+.cribsheet-modal-anchored {
+    position: fixed;
+    /* 比居中那版小巧：宽度收窄、内距减小 */
+    width: 300px;
+    padding: 18px;
+    border-radius: 14px;
+    box-shadow:
+        0 1px 3px hsla(220, 30%, 20%, 0.12),
+        0 12px 32px hsla(220, 30%, 15%, 0.26);
 }
 
-.cribsheet-size-option:hover {
-    border-color: hsl(212, 70%, 60%);
-    background: hsl(212, 60%, 98%);
+.cribsheet-modal-anchored h3 {
+    margin: 0 0 12px;
+    font-size: 0.95rem;
 }
 
-.cribsheet-size-option-name {
-    font-weight: 600;
+.cribsheet-modal-anchored label {
+    font-size: 0.76rem;
+    margin: 10px 0 5px;
 }
 
-.cribsheet-size-option-dims {
-    color: var(--weak-color, #888);
-    font-size: 0.8rem;
+.cribsheet-modal-anchored input[type="text"],
+.cribsheet-modal-anchored textarea {
+    padding: 7px 9px;
+    font-size: 0.84rem;
+}
+
+.cribsheet-modal-anchored .cribsheet-modal-actions {
+    margin-top: 14px;
 }
 
 /* 编辑弹窗里的提示条：只有编辑"引用笔记库"的方块时才显示，
    告诉学生保存之后这条会变成自己的副本，公共笔记库不受影响 */
 .cribsheet-edit-warning {
-    margin: 0 0 4px;
-    padding: 9px 11px;
-    font-size: 0.78rem;
-    line-height: 1.5;
+    margin: 0 0 2px;
+    padding: 7px 9px;
+    font-size: 0.72rem;
+    line-height: 1.45;
     color: hsl(32, 55%, 26%);
     background: hsl(45, 92%, 95%);
     border-left: 3px solid hsl(38, 85%, 55%);
@@ -1540,7 +1795,7 @@
        没法算居中，而且没有过渡可言。延迟切换 visibility 是为了让淡出动画播完 */
     visibility: hidden;
     opacity: 0;
-    transform: translate(-50%, 6px);
+    transform: translateY(6px);
     transition:
         opacity 0.17s ease,
         transform 0.17s ease,
@@ -1552,7 +1807,7 @@
 .cribsheet-style-bar.is-visible {
     visibility: visible;
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translateY(0);
     transition:
         opacity 0.17s ease,
         transform 0.17s ease,
@@ -1563,11 +1818,11 @@
 
 /* 摆到方块下方时（上面放不下），淡入方向跟着翻过来，从上往下落 */
 .cribsheet-style-bar.is-below {
-    transform: translate(-50%, -6px);
+    transform: translateY(-6px);
 }
 
 .cribsheet-style-bar.is-below.is-visible {
-    transform: translate(-50%, 0);
+    transform: translateY(0);
 }
 
 /* 拖动方块的时候工具条要即时跟随，位置上的过渡会拖后腿，临时关掉 */
@@ -1613,6 +1868,15 @@
 }
 
 /* 开关状态必须一眼看得出来——加粗斜体这种，看不出当前是开是关就没法用 */
+/* 删除按钮：平时跟别的图标一样是灰的，悬停才变红。
+   一上来就红会让整条工具条的重心跑到删除上——它不是主要操作。
+   放最右边并单独隔一道分隔线，是因为它是不可逆操作，
+   不该跟改字号改颜色那些挨在一起没有区隔 */
+.cribsheet-style-danger:hover {
+    background: hsla(0, 70%, 55%, 0.2);
+    color: hsl(0, 85%, 74%);
+}
+
 .cribsheet-style-toggle.active {
     background: #ffffff;
     color: hsl(220, 10%, 14%);
@@ -1636,22 +1900,41 @@
     background: hsla(0, 0%, 100%, 0.12);
 }
 
-.cribsheet-style-size-wrap select {
+/* 字号输入框。宽度写死是因为 number 输入框在深色条上默认很宽，
+   而这里只需要放两位数 */
+.cribsheet-style-size-wrap input[type="number"] {
+    width: 42px;
     border: none;
     background: none;
     color: #ffffff;
     font-size: 0.74rem;
     font-family: inherit;
-    cursor: pointer;
     padding: 0;
     outline: none;
+    text-align: center;
 }
 
-/* 下拉展开的列表由系统绘制，深色背景上默认是白底黑字，
-   这里把选项的配色补回来，免得展开的一瞬间刺眼 */
-.cribsheet-style-size-wrap select option {
-    background: hsl(220, 8%, 16%);
-    color: #ffffff;
+.cribsheet-style-size-wrap input[type="number"]::placeholder {
+    color: hsla(0, 0%, 100%, 0.5);
+}
+
+/* 自动状态：框里显示的是实测出来的字号，置灰表示"这是自动值，不是你设的"。
+   双击可以恢复到这个状态 */
+.cribsheet-style-size-wrap input[type="number"].is-auto {
+    color: hsla(0, 0%, 100%, 0.45);
+}
+
+/* 去掉右侧那对步进箭头：深色条上很难看，而且这里更常用的是直接打字。
+   两条规则分别对应 WebKit 和 Firefox */
+.cribsheet-style-size-wrap input[type="number"]::-webkit-outer-spin-button,
+.cribsheet-style-size-wrap input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.cribsheet-style-size-wrap input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
 }
 
 /* 颜色选择器：原生控件在深色条上很难看，用一个圆形色块盖住它，
@@ -1719,7 +2002,6 @@
     .qtype-pill,
     .cribsheet-library-item:hover,
     .cribsheet-library-item:active,
-    .grid-stack-item:not(.ui-draggable-dragging):hover .cribsheet-note-card,
     .grid-stack-item.ui-draggable-dragging .cribsheet-note-card,
     .cribsheet-pdf-btn:hover,
     .cribsheet-pdf-btn:active,
@@ -1728,12 +2010,12 @@
     .cribsheet-add-custom-btn:hover,
     .cribsheet-add-custom-btn:active,
     .cribsheet-orientation-toggle button:active,
-    .cribsheet-size-option:active,
     .cribsheet-modal-cancel-btn:active,
     .cribsheet-modal-next-btn:active,
     .cribsheet-style-toggle:hover,
     .cribsheet-style-toggle:active,
     .cribsheet-style-swatch:hover,
+    .qtype-pill:hover,
     .qtype-pill:active {
         transform: none;
     }
@@ -1755,52 +2037,113 @@
     .cribsheet-style-bar,
     .cribsheet-style-bar.is-visible {
         transition: opacity 0.15s ease, visibility 0s;
-        transform: translate(-50%, 0);
+        transform: translateY(0);
     }
 }
 
 /* ---------- 打印专用：只留下 Cribsheet 那一页，其他所有东西都藏起来 ---------- */
 @media print {
-    body * {
-        visibility: hidden;
-    }
-    #cribsheet-page, #cribsheet-page * {
-        visibility: visible;
-    }
-    #cribsheet-page {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        max-width: none;
-        aspect-ratio: unset; /* 打印时物理尺寸交给 @page 控制，这里不需要再靠比例撑 */
-        border: none;
-        box-shadow: none;
-        padding: 0.3in;
-        box-sizing: border-box;
-    }
-    .cribsheet-page::before,
+    /* 打印只留 Cribsheet 那张纸。做法是：把纸张【上方和周围】那些块 display: none，
+       纸张本身留在原位不动，于是它自然落到纸的顶部。
+    
+       ⚠️ 这里绝对不能对 .test-section / .revision-view 写 display: block !important。
+       之前那次就是这么干的，结果 Revision 首页的两张卡片、Marked Questions 的
+       题型筛选、My Notes 的文本框全印了出来——那些板块平时靠 display: none 隐藏、
+       只有 .active 才显示，一条 !important 把它们全打开了。
+       什么都不动的话，非当前板块本来就是隐藏的。
+    
+       也不用 visibility: hidden：它只让元素看不见，占的版面空间还在，
+       纸的上半部分会空出一大片、内容被挤到中间甚至下一页。 */
+
+    /* 页面外壳 */
+    #header-wrapper,
+    .nav-bar,
+    .section-switcher,
+    #footer-container,
+    #auth-modal-container,
+    #mini-auth-banner,
+    /* Cribsheet 界面里除画布之外的部分 */
+    .revision-back-btn,
+    .cribsheet-intro,
+    .cribsheet-library-panel,
+    .cribsheet-sheet-toolbar,
+    .crib-sheet-actions,
+    /* 只在编辑时有意义的辅助层 */
     .cribsheet-guide-layer,
     .cribsheet-note-remove,
     .cribsheet-empty-hint,
     .cribsheet-canvas-empty,
-    .cribsheet-style-bar {
+    .cribsheet-style-bar,
+    .immersive-toggle {
         display: none !important;
     }
-    /* 选中高亮只是编辑时的视觉提示，打印出来不该有——但这里只能去掉高亮，
-       不能把卡片本身藏掉。原来这条选择器跟上面两个共用一条 display:none，
-       结果只要打印时有方块处于选中状态，那张笔记就整个不会出现在 PDF 里 */
+
+    /* 网格底那层渐变 */
+    .cribsheet-page::before {
+        display: none !important;
+    }
+
+    /* 从内容区到纸张之间的每一层：只清内外边距和装饰，【不动 display】。
+       这些是屏幕上的工作台样式，印在纸上只会挤占版面 */
+    .content,
+    #revision-content,
+    #revision-view-cribsheet,
+    .cribsheet-builder-layout,
+    .cribsheet-sheet-panel,
+    .cribsheet-page-wrap {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: none !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+        max-height: none !important;
+        animation: none !important;
+    }
+
+    /* 纸张：只去掉屏幕上的装饰。
+       ⚠️ 绝对不要动它的宽高——尺寸是用英寸写死的（8.5in × 11in），
+       那本来就是一张物理 Letter 纸，改成 height: auto 会让它塌成
+       只有姓名那一行的高度（卡片是绝对定位的、不贡献父元素高度），
+       下面的卡片全被纸边界切掉 */
+    #cribsheet-page {
+        margin: 0 !important;
+        background: none !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        transition: none !important;
+    }
+
+    /* 姓名/考试名不能看出是表单控件：占位符要消失
+       （否则会印出灰色的 "Your name"），下划线加深，字号放大 */
+    .cribsheet-sheet-header input[type="text"] {
+        border-bottom: 1px solid #000000 !important;
+        color: #000000 !important;
+        font-size: 0.95rem !important;
+    }
+
+    .cribsheet-sheet-header input[type="text"]::placeholder {
+        color: transparent !important;
+    }
+
+    .cribsheet-sheet-field-label {
+        color: #000000 !important;
+    }
+
+    /* 选中高亮和悬停投影都是编辑时的提示，印出来不该有。
+       ⚠️ 只能去掉高亮，不能把卡片本身藏掉——早先这条选择器跟上面那些
+       共用一条 display: none，结果打印时只要有方块处于选中状态，
+       那张笔记就整个不会出现在 PDF 里 */
     .grid-stack-item.cribsheet-item-selected,
-    .grid-stack-item.cribsheet-item-selected .cribsheet-note-card {
+    .grid-stack-item .cribsheet-note-card {
         outline: none !important;
         box-shadow: none !important;
     }
+
     .grid-stack-item.cribsheet-item-selected .cribsheet-note-card {
         border-color: hsl(214, 52%, 88%) !important;
-    }
-    .crib-sheet-actions {
-        display: none; /* My Notes 那个 Save 按钮打印的时候也不需要 */
     }
 }
 

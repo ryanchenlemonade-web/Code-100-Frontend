@@ -1,30 +1,13 @@
 // cs1_index.js
 
-const items = document.querySelectorAll('.sidebar-item');
+const items = document.querySelectorAll('.switcher-item');
 
 const navItems = document.querySelectorAll('.bar-items');
-const sidebar = document.querySelector('.sidebar');
+const sectionSwitcher = document.querySelector('.section-switcher');
 const navBar = document.querySelector('.nav-bar');
 const footerContainer = document.getElementById('footer-container');
 
 // 每个 Test 对应的颜色，跟navbar配色保持一致
-// 侧边栏底色，按 Test 分类联动（绿 → 黄 → 橙 → 红，跟导航栏的色阶一致）。
-// 用 CSS 变量而不是直接设 backgroundColor：背景的其他部分（透明度、边线）
-// 归 CSS 管，这里只提供颜色，两边不打架。
-// 亮度刻意定在 96%，比导航栏激活态（88-90%）明显淡一档。
-// 两边同一档的话，侧边栏会跟导航栏抢注意力，而它只是背景
-const sidebarTintMap = {
-    'test1': 'hsl(140, 42%, 96%)',
-    'test2': 'hsl(45, 80%, 96%)',
-    'test3': 'hsl(28, 80%, 96%)',
-    'final': 'hsl(0, 58%, 96.5%)'
-};
-
-function applySidebarTint(navId) {
-    const tint = sidebarTintMap[navId];
-    if (tint) sidebar.style.setProperty('--sidebar-tint', tint);
-}
-
 // nav 按钮 id 对应数据库里的 paper_category（必须跟 Test_Papers 表里的值完全一致）
 // 以后新增分类（比如 Test 4），只需要在这里加一行映射即可，不需要新建任何文件
 const navToCategory = {
@@ -72,71 +55,19 @@ function scrollPageToTop() {
 }
 
 
-// ---------- 侧边栏折叠 ----------
-// 状态规则：刷新页面保持不变，但从别的页面点进来时一律回到展开。
-//
-// 理由是这两件事的性质不同：刷新是「还在原来那次使用里」，收起来是刚做的选择，
-// 弹回去会很烦；而从首页点进来是一次新的开始，这时候把导航亮出来更合适——
-// 尤其是收起状态下侧边栏完全不可见，新进来的人可能找不到它在哪。
-//
-// 用 sessionStorage 而不是 localStorage：这个状态本来就只该在当前标签页里有效，
-// 换个标签页打开也应该是展开的。
-const SIDEBAR_COLLAPSED_KEY = 'code100_sidebar_collapsed';
-const sidebarToggle = document.getElementById('sidebar-toggle');
-
-// 浏览器能区分这次是刷新还是从别处导航过来的。
-// reload = 刷新；back_forward = 用前进/后退回到这个页面——
-// 这两种都算「还在原来那次浏览里」，应该保持状态。
-// navigate（从首页点进来、或者直接输网址）则回到默认展开。
-function shouldKeepSidebarState() {
-    try {
-        const nav = performance.getEntriesByType('navigation')[0];
-        if (!nav) return false;
-        return nav.type === 'reload' || nav.type === 'back_forward';
-    } catch (e) {
-        // 老浏览器拿不到这个 API，那就一律按「新进来」处理，展开是更安全的默认值
-        return false;
-    }
-}
-
-function applySidebarCollapsed(collapsed) {
-    document.body.classList.toggle('sidebar-collapsed', collapsed);
-    if (sidebarToggle) {
-        // aria-expanded 描述的是「侧边栏展开着吗」，所以跟 collapsed 相反
-        sidebarToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-        sidebarToggle.title = collapsed ? 'Show sidebar' : 'Hide sidebar';
-    }
-}
-
-if (sidebarToggle) {
-    const savedCollapsed = sessionStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
-    const initialCollapsed = shouldKeepSidebarState() ? savedCollapsed : false;
-
-    applySidebarCollapsed(initialCollapsed);
-    // 存回去，这样紧接着的刷新读到的是当前实际状态而不是上一次的残留
-    sessionStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(initialCollapsed));
-
-    sidebarToggle.addEventListener('click', () => {
-        const collapsed = !document.body.classList.contains('sidebar-collapsed');
-        applySidebarCollapsed(collapsed);
-        sessionStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
-    });
-}
-
-
-// 进入考试专注模式：隐藏 sidebar、navbar 和 footer
+// 进入考试专注模式：隐藏切换器、navbar 和 footer
 // （被 testing-engine.js 里 Testing 模式的「开始考试」逻辑调用）
 function enterExamFocusMode() {
-    sidebar.classList.add('exam-focus-hide');
+    if (sectionSwitcher) sectionSwitcher.classList.add('exam-focus-hide');
     if (navBar) navBar.classList.add('exam-focus-hide');
     if (footerContainer) footerContainer.classList.add('exam-focus-hide');
     document.body.classList.add('exam-focus-mode');
 }
 
-// 退出考试专注模式：恢复 sidebar、navbar 和 footer
+// 退出考试专注模式：恢复切换器、navbar 和 footer
 // （被 testing-engine.js 里 Testing 模式的「交卷」逻辑调用）
 function exitExamFocusMode() {
-    sidebar.classList.remove('exam-focus-hide');
+    if (sectionSwitcher) sectionSwitcher.classList.remove('exam-focus-hide');
     if (navBar) navBar.classList.remove('exam-focus-hide');
     if (footerContainer) footerContainer.classList.remove('exam-focus-hide');
     document.body.classList.remove('exam-focus-mode');
@@ -151,7 +82,7 @@ async function loadContent(id) {
 
     // 切换内容前，先停掉 Testing 模式可能还在跑的计时器，避免内存泄漏
     stopTestingTimer();
-    // 同时退出考试专注模式，避免切到别的 Test 时 sidebar/navbar 还是隐藏状态
+    // 同时退出考试专注模式，避免切到别的 Test 时切换器/navbar 还是隐藏状态
     exitExamFocusMode();
 
     if (!papers || papers.length === 0) {
@@ -229,13 +160,12 @@ navItems.forEach(item => {
         navItems.forEach(i => i.classList.remove('active'));
         this.classList.add('active');
 
-        applySidebarTint(this.id);
         scrollPageToTop();
 
         // 加载对应内容
         loadContent(this.id);
 
-        // 切换 Test 时，把 sidebar 重置回 Practice，保持一致
+        // 切换 Test 时，把板块重置回 Practice，保持一致
         items.forEach(i => i.classList.remove('active'));
         document.getElementById('practice').classList.add('active');
     });
@@ -244,42 +174,172 @@ navItems.forEach(item => {
 
 // 页面加载时，先拉取所有试卷的分组数据，再显示默认的 Test 1
 fetchPapersGrouped().then(() => {
-    applySidebarTint('test1');
     loadContent('test1');
 });
 
 
+// 侧项缩小的比例，必须跟 CSS 里 .switcher-item 的 --scale 默认值一致
+const SWITCHER_SIDE_SCALE = 0.5;
+// 相邻两个标签之间的间隙
+const SWITCHER_ITEM_GAP = 26;
+// 轨道两端留的一点余量
+const SWITCHER_EDGE_PAD = 8;
+
+// 量一个子页标题在当前字体下有多宽。
+// 伪元素的尺寸拿不到，只能建一个同样字体设置的临时元素来量，量完立刻移除。
+// 字体设置必须跟 CSS 里 .switcher-track::after 保持一致，改一边要改两边
+function measureSubPageTitleWidth(title) {
+    const probe = document.createElement('span');
+    probe.textContent = title;
+    probe.style.cssText = `
+        position: absolute;
+        visibility: hidden;
+        white-space: nowrap;
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+    `;
+    document.body.appendChild(probe);
+    const width = probe.offsetWidth;
+    probe.remove();
+    return Math.ceil(width);
+}
+
+// ---------- 子页标题覆盖 ----------
+// 进到 Revision 的子页（Marked Questions / Cribsheet Builder）时，
+// 切换器整个变成那个子页的标题：两侧首字母消失，也不能再左右切换。
+//
+// 为什么禁掉切换：子页比板块低一层，这时候轮滑已经不是"当前层级的导航"了。
+// 留着能切的话，"当前项"到底是 Revision 还是 Marked Questions 就说不清。
+// 想去别的板块，先点返回回到 Revision 首页。
+//
+// 由 testing-engine.js 的 showRevisionView() 调用——那边才知道进了哪个子页。
+function setSwitcherSubPageTitle(title) {
+    const switcher = document.getElementById('section-switcher');
+    if (!switcher) return;
+
+    // 标题写在 .switcher-track 上而不是外层——CSS 的 attr() 只能读
+    // 伪元素所在元素自己的属性，读不到父元素的
+    const track = document.getElementById('switcher-track');
+
+    if (title) {
+        switcher.classList.add('is-subpage');
+        if (track) {
+            track.dataset.subpageTitle = title;
+            // 轨道要撑到标题那么宽。
+            // 这里不能写 width: auto——轨道里的标签都是绝对定位的，
+            // auto 会让它塌成 0 宽，而标题伪元素是相对轨道居中的，
+            // 于是整个标题往左溢出、被屏幕边缘切掉。
+            // 伪元素量不到宽度，所以拿一个临时元素照同样的字体设置量一次
+            track.style.width = `${measureSubPageTitleWidth(title)}px`;
+        }
+    } else {
+        switcher.classList.remove('is-subpage');
+        if (track) delete track.dataset.subpageTitle;
+        layoutSwitcher();   // 退回三项模式，宽度和位置都要重新算
+    }
+}
+
+// 摆放三个标签：当前项居中，另外两个缩小放在左右两侧当预览。
+//
+// 位置按各自的【实际宽度】算，不是固定偏移——三个词长短差很多，
+// 固定偏移会让间隙忽宽忽窄。侧项是用 scale 缩小的，scale 不改变
+// 布局宽度，所以视觉宽度要自己乘一下比例。
+//
+// direction 只影响哪个词落到左边、哪个落到右边（按环形顺序）。
+// 只有三个项时两种方向的结果其实一样，留着是为了以后加第四个板块。
+function layoutSwitcher(direction) {
+    const track = document.getElementById('switcher-track');
+    const list = Array.from(items);
+    const activeIndex = list.findIndex(i => i.classList.contains('active'));
+    if (!track || activeIndex === -1) return;
+
+    const total = list.length;
+    const prevIndex = (activeIndex - 1 + total) % total;
+    const nextIndex = (activeIndex + 1) % total;
+
+    // 先量宽度。侧项虽然被 scale 缩小了，offsetWidth 拿到的仍是未缩放的值，
+    // 所以乘上比例才是它在屏幕上实际占的宽度
+    // 侧项显示的是首字母、当前项是全称，两者宽度差很远。
+    // active 类刚刚才切换，先读一次 offsetWidth 逼浏览器把新的伪元素内容
+    // 应用掉，后面量到的才是新文字的宽度
+    void list[activeIndex].offsetWidth;
+
+    const widthOf = (el, isActive) =>
+        el.offsetWidth * (isActive ? 1 : SWITCHER_SIDE_SCALE);
+
+    const activeW = widthOf(list[activeIndex], true);
+    const leftW = widthOf(list[prevIndex], false);
+    const rightW = widthOf(list[nextIndex], false);
+
+    // 左右两侧各自的中心，距离整体中心多远
+    const leftX = -(activeW / 2 + SWITCHER_ITEM_GAP + leftW / 2);
+    const rightX = activeW / 2 + SWITCHER_ITEM_GAP + rightW / 2;
+
+    list.forEach((item, index) => {
+        let x = 0;
+        if (index === prevIndex) x = leftX;
+        else if (index === nextIndex) x = rightX;
+        item.style.setProperty('--x', `${Math.round(x)}px`);
+    });
+
+    // 轨道要正好裹住三个标签
+    const totalWidth = leftW + rightW + activeW
+        + SWITCHER_ITEM_GAP * 2 + SWITCHER_EDGE_PAD * 2;
+    track.style.width = `${Math.round(totalWidth)}px`;
+}
+
+// 切到某个板块。点标签和点箭头都走这里，逻辑只有一份
+function activateSection(item, direction) {
+    if (!item) return;
+
+    items.forEach(i => {
+        const isActive = i === item;
+        i.classList.toggle('active', isActive);
+        i.setAttribute('aria-selected', String(isActive));
+    });
+
+    setSwitcherSubPageTitle(null);   // 换板块了，子页标题要撤掉
+    layoutSwitcher(direction);
+
+    scrollPageToTop();
+
+    // 隐藏所有板块
+    document.querySelectorAll('.test-section').forEach(section => {
+        section.classList.remove('active');
+    });
+
+    // 显示被选中的那一块
+    const target = document.getElementById(item.id + '-content');
+    if (target) {
+        target.classList.add('active');
+
+        // 重新触发淡入动画，跟切换 Test 时保持一致
+        target.style.animation = 'none';
+        void target.offsetWidth;   // 强制重排，这一行不能删
+        target.style.animation = 'contentFadeIn 0.9s ease forwards';
+    }
+
+    // 切到 Revision 时，先回到首页（两张卡片），具体内容等用户点进某张卡片才加载，
+    // 不用一进来就把星标题目和 Crib Sheet 都请求一遍
+    if (item.id === 'revision') {
+        showRevisionView('landing');
+    }
+}
+
 items.forEach(item => {
     item.addEventListener('click', function(e) {
         e.preventDefault();
-
-        items.forEach(i => i.classList.remove('active'));
-        this.classList.add('active');
-        scrollPageToTop();
-
-        // 隐藏所有板块
-        document.querySelectorAll('.test-section').forEach(section => {
-            section.classList.remove('active');
-        });
-
-        // 显示被点击的那一块
-        const target = document.getElementById(this.id + '-content');
-        if (target) {
-            target.classList.add('active');
-
-            // 重新触发淡入动画，跟切换 Test 时保持一致
-            target.style.animation = 'none';
-            void target.offsetWidth;   // 强制重排，这一行不能删
-            target.style.animation = 'contentFadeIn 0.9s ease forwards';
-        }
-
-        // 切到 Revision 标签页时，先回到首页（两张卡片），具体内容等用户点进某张卡片才加载，
-        // 不用一进来就把星标题目和 Crib Sheet 都请求一遍
-        if (this.id === 'revision') {
-            showRevisionView('landing');
-        }
+        activateSection(this);
     });
 });
+
+// 首屏摆一次。字体加载完标签宽度会变，load 之后再摆一次
+layoutSwitcher();
+window.addEventListener('load', () => layoutSwitcher());
+
+
+
 
 
 // footer

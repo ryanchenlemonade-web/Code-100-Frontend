@@ -33,14 +33,6 @@
 
     <div class="nav-bar">
 
-        <!-- 侧边栏折叠按钮。放在导航栏里而不是侧边栏里，是因为侧边栏收起之后
-             按钮要是在里面就跟着消失了，没法再展开。
-             导航栏左边本来就是一片空白（Test 1-4 是居中排的），正好放它。 -->
-        <button type="button" id="sidebar-toggle" class="sidebar-toggle"
-                aria-label="Toggle sidebar" aria-expanded="true" title="Hide sidebar">
-            <i class="fa-solid fa-table-columns"></i>
-        </button>
-
         <a href="#" class="bar-items active" id="test1">Test 1</a>
         <a href="#" class="bar-items" id="test2">Test 2</a>
         <a href="#" class="bar-items" id="test3">Test 3</a>
@@ -51,34 +43,27 @@
 
     <!-- 主要内容 -->
     <div class="main-layout">
-        <div class="sidebar">
+        <!-- 板块切换器。同一时间只显示当前板块的名字，左右两个箭头切换。
+             三个标签都留在 DOM 里，非当前的被移到两侧之外并透明化——
+             切换时它们横向滑过，旧的滑出、新的滑入，不会出现文字瞬间被替换的生硬感。
+             轨道宽度按最长的那个标签（Examination）固定，
+             否则切换时整个组件的宽度会跟着抖。 -->
+        <div class="section-switcher" id="section-switcher" role="tablist"
+             aria-label="Switch section">
 
-            <a href="#" class="sidebar-item active" id="practice">
-                <i class="fa-regular fa-pen-to-square icon"></i>
-                <span>Practice</span>
-            </a>
-            <a href="#" class="sidebar-item" id="testing">
-                <i class="fa-regular fa-clock icon"></i>
-                <span>Examination</span>
-            </a>
-            <a href="#" class="sidebar-item" id="revision">
-                <i class="fa-regular fa-bookmark icon"></i>
-                <span>Revision</span>
-            </a>
-
-            <!-- ⚠️ 进度卡：目前只是毛胚，没有接任何数据，也没有任何逻辑。
-                 虚线边框是刻意的，一眼能看出这块还没做完。
-                 这里刻意不放假数字（"12 notes · 60%" 那种）——项目从头到尾坚持
-                 "没有真实数据支撑就做成诚实的占位"，编个好看的数字糊弄反而更糟。
-                 以后接真实数据时：把 .sidebar-progress 的虚线换成实线，
-                 把下面这行 placeholder 换成真正的内容。 -->
-            <div class="sidebar-progress">
-                <span class="sidebar-progress-label">Progress</span>
-                <p class="sidebar-progress-placeholder">Not wired up yet</p>
+            <div class="switcher-track" id="switcher-track">
+                <!-- 文字放在 data-* 上而不是直接写在标签里：
+                     侧项只显示首字母，靠 CSS 伪元素在全称和首字母之间切换。
+                     直接写文本再用 CSS 截字符是做不到的。
+                     <span class="switcher-sr"> 留给读屏软件，它读到的始终是全称 -->
+                <a href="#" class="switcher-item active" id="practice" role="tab" aria-selected="true"
+                   data-label="Practice" data-initial="P"><span class="switcher-sr">Practice</span></a>
+                <a href="#" class="switcher-item" id="testing" role="tab" aria-selected="false"
+                   data-label="Examination" data-initial="E"><span class="switcher-sr">Examination</span></a>
+                <a href="#" class="switcher-item" id="revision" role="tab" aria-selected="false"
+                   data-label="Revision" data-initial="R"><span class="switcher-sr">Revision</span></a>
             </div>
-
         </div>
-
 
         <div class="content" id="content-container">
             <!-- 页面刚打开时，这里手动放 Test 1 的内容，避免第一次加载时空白 -->

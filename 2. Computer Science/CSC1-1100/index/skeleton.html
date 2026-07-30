@@ -7,7 +7,10 @@
 
 <!-- Practice -->
 <div class="test-section active" id="practice-content">
-    <h2>Practice</h2>
+    <!-- 这里原本有个 <h2>Practice</h2>，跟上面的板块切换器是同一个信息，删掉了。
+         切换器本身已经放大到标题的量级，由它充当标题。
+         Examination 和 Revision 的 <h2> 不能照此处理：
+         前者会被 JS 换成卷子名和 "Correction"，后者是首页 hero 的一部分 -->
 
     <!-- 题型筛选：Practice 模式跨所有年份混合展示，靠这排标签按题型筛选。
          选项不写在这里——由 testing-engine.js 的 QUESTION_TYPE_FILTERS 生成，
@@ -85,11 +88,13 @@
     </div>
 
     <!-- 板块一：标过重点的题目 -->
+    <!-- 这里原本有 <h2>Marked Questions</h2>。标题现在由上面的板块切换器接管：
+         进到这个子页时切换器会整个变成 "Marked Questions"（见 showRevisionView）。
+         返回按钮跟着挪到标题下方 -->
     <div class="revision-view" id="revision-view-marked-questions">
         <button type="button" class="revision-back-btn" data-revision-nav="landing">
             <i class="fa-solid fa-arrow-left"></i> Revision Center
         </button>
-        <h2>Marked Questions</h2>
 
         <!-- 跟 Practice 那排用的是同一份数据和同一个渲染函数 -->
         <div class="revision-filter-row">
@@ -104,11 +109,11 @@
     </div>
 
     <!-- 板块二：Cribsheet Builder（笔记库 + 学生自己拼的复习单，一页 Letter 纸大小） -->
+    <!-- 同上，标题由切换器接管 -->
     <div class="revision-view" id="revision-view-cribsheet">
         <button type="button" class="revision-back-btn" data-revision-nav="landing">
             <i class="fa-solid fa-arrow-left"></i> Revision Center
         </button>
-        <h2>Cribsheet Builder</h2>
         <p class="cribsheet-intro">Drag notes onto your page, arrange them however you like, then save it as a PDF to print before your exam.</p>
 
         <div class="cribsheet-builder-layout">
@@ -146,6 +151,31 @@
 
                 <div class="cribsheet-page-wrap">
                     <div class="cribsheet-page" id="cribsheet-page">
+
+                        <!-- 纸张顶部这一行：水印 + 姓名 + 考试名。
+                             整块在纸张内部，所以会跟着一起打印出来。
+                             打印时输入框会被样式改成"下划线 + 文字"的样子，看不出是表单控件 -->
+                        <div class="cribsheet-sheet-header">
+
+                            <!-- 左上角的水印。alt 留空——它是装饰，
+                                 读屏软件念一遍 logo 对使用者没有帮助 -->
+                            <div class="cribsheet-watermark" aria-hidden="true">
+                                <img src="../../../0. images/Code 100.png" alt="">
+                                <span>Code 100</span>
+                            </div>
+
+                            <label class="cribsheet-sheet-field cribsheet-field-name">
+                                <span class="cribsheet-sheet-field-label">Name</span>
+                                <input type="text" id="cribsheet-student-name"
+                                       placeholder="Your name" maxlength="60" autocomplete="off">
+                            </label>
+                            <label class="cribsheet-sheet-field cribsheet-field-exam">
+                                <span class="cribsheet-sheet-field-label">Exam</span>
+                                <input type="text" id="cribsheet-exam-name"
+                                       placeholder="e.g. Test 1" maxlength="40" autocomplete="off">
+                            </label>
+                        </div>
+
                         <div class="grid-stack" id="cribsheet-grid"></div>
                         <!-- 对齐参考线画在这一层，浮在卡片上面。inset 跟网格底一样是 20px，
                              两者用同一套坐标，画出来才对得上 -->
@@ -156,18 +186,15 @@
                              所以坐标只需要算「相对纸左上角」，不碰视口、不用管祖先有没有 transform。
                              它是覆盖层，不占文档流，画布布局不会因为它出现而移动 -->
                         <div class="cribsheet-style-bar" id="cribsheet-style-panel">
-                            <label class="cribsheet-style-size-wrap" title="Text size">
+                            <!-- 字号：直接填数字，留空就是 Auto（用 CSS 里的默认字号）。
+                                 原来是个只能选固定几档的下拉框。
+                                 min/max 不是装饰——数据库那列是 SMALLINT，
+                                 而且填个 900 会把卡片整个撑爆，JS 那边也会再夹一次 -->
+                            <label class="cribsheet-style-size-wrap" title="Text size (leave empty for auto)">
                                 <i class="fa-solid fa-a"></i>
-                                <select id="cribsheet-style-size" aria-label="Text size">
-                                    <option value="">Auto</option>
-                                    <option value="9">9</option>
-                                    <option value="10">10</option>
-                                    <option value="11">11</option>
-                                    <option value="12">12</option>
-                                    <option value="14">14</option>
-                                    <option value="16">16</option>
-                                    <option value="18">18</option>
-                                </select>
+                                <input type="number" id="cribsheet-style-size"
+                                       aria-label="Text size in pixels, leave empty for automatic"
+                                       placeholder="Auto" min="6" max="72" step="1">
                             </label>
 
                             <span class="cribsheet-style-divider"></span>
@@ -189,6 +216,13 @@
                             <span class="cribsheet-style-divider"></span>
 
                             <button type="button" id="cribsheet-style-reset" class="cribsheet-style-toggle" title="Reset styles" aria-label="Reset styles"><i class="fa-solid fa-eraser"></i></button>
+
+                            <!-- 删除放最右边、单独隔一道线：它跟左边那些"改样式"的按钮性质不同，
+                                 是不可逆操作，不该跟它们挨在一起没有区隔。
+                                 多选时删掉的是整个选区，跟上面工具栏那个垃圾桶行为一致 -->
+                            <span class="cribsheet-style-divider"></span>
+
+                            <button type="button" id="cribsheet-style-delete" class="cribsheet-style-toggle cribsheet-style-danger" title="Delete note" aria-label="Delete selected notes"><i class="fa-solid fa-trash-can"></i></button>
                         </div>
                         <div class="cribsheet-canvas-empty" id="cribsheet-empty-hint">
                             <div class="cribsheet-canvas-empty-icon"><i class="fa-solid fa-note-sticky"></i></div>
@@ -215,17 +249,6 @@
         </div>
     </div>
 
-    <!-- 加笔记的时候选尺寸用的弹窗（引用笔记库笔记 / 自定义笔记都会用到这个） -->
-    <div class="cribsheet-modal-backdrop" id="cribsheet-size-modal-backdrop" style="display: none;">
-        <div class="cribsheet-modal">
-            <h3 id="cribsheet-size-modal-title">Choose a size</h3>
-            <div id="cribsheet-size-options" class="cribsheet-size-options">
-                <!-- 尺寸选项由 JS 动态插入 -->
-            </div>
-            <button type="button" id="cribsheet-size-modal-cancel" class="cribsheet-modal-cancel-btn">Cancel</button>
-        </div>
-    </div>
-
     <!-- 自定义笔记的输入弹窗 -->
     <div class="cribsheet-modal-backdrop" id="cribsheet-custom-modal-backdrop" style="display: none;">
         <div class="cribsheet-modal">
@@ -236,7 +259,7 @@
             <textarea id="cribsheet-custom-content-input" rows="4" placeholder="Write whatever you want here"></textarea>
             <div class="cribsheet-modal-actions">
                 <button type="button" id="cribsheet-custom-modal-cancel" class="cribsheet-modal-cancel-btn">Cancel</button>
-                <button type="button" id="cribsheet-custom-modal-next" class="cribsheet-modal-next-btn">Next: Choose Size</button>
+                <button type="button" id="cribsheet-custom-modal-next" class="cribsheet-modal-next-btn">Add Note</button>
             </div>
         </div>
     </div>
@@ -245,16 +268,20 @@
          引用笔记库的方块保存之后会转成学生自己的副本（后端把 note_id 置空），
          因为公共笔记库是全站共享的，不能被单个学生改动——上面那条提示就是说明这件事的，
          只有编辑引用笔记库的方块时才显示。 -->
-    <div class="cribsheet-modal-backdrop" id="cribsheet-edit-modal-backdrop" style="display: none;">
-        <div class="cribsheet-modal">
+    <!-- 加 -anchored 的两个类：这个弹窗不居中，而是浮在被编辑的那张卡片右边
+         （位置由 JS 按卡片的实际坐标算）。另外两个弹窗仍然居中，不受影响。
+         遮罩做成透明的——挡住的话就看不到正在编辑的那张卡了，
+         而"能一边看卡片一边改"正是不居中的理由 -->
+    <div class="cribsheet-modal-backdrop cribsheet-modal-backdrop-anchored" id="cribsheet-edit-modal-backdrop" style="display: none;">
+        <div class="cribsheet-modal cribsheet-modal-anchored">
             <h3>Edit Note</h3>
             <p class="cribsheet-edit-warning" id="cribsheet-edit-warning" style="display: none;">
-                This note comes from the shared library. Saving will turn it into your own copy — the library note itself stays unchanged.
+                Saving makes your own copy — the library note stays unchanged.
             </p>
             <label for="cribsheet-edit-title-input">Title</label>
             <input type="text" id="cribsheet-edit-title-input" placeholder="Note title">
             <label for="cribsheet-edit-content-input">Content</label>
-            <textarea id="cribsheet-edit-content-input" rows="6" placeholder="Write whatever you want here"></textarea>
+            <textarea id="cribsheet-edit-content-input" rows="4" placeholder="Write whatever you want here"></textarea>
             <div class="cribsheet-modal-actions">
                 <button type="button" id="cribsheet-edit-modal-cancel" class="cribsheet-modal-cancel-btn">Cancel</button>
                 <button type="button" id="cribsheet-edit-modal-save" class="cribsheet-modal-next-btn">Save Changes</button>
