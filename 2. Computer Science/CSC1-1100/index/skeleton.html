@@ -31,22 +31,215 @@
 
 <!-- Examination（原 Testing，改名避免跟 Test 1/2/3 混淆） -->
 <div class="test-section" id="testing-content">
-    <!-- 版本切换下拉框：只在 Examination 标签页显示，只有同一分类下有多个年份版本时才会真正显示出来 -->
-    <div id="version-selector-wrap" class="version-selector-wrap">
-        <label for="version-select">Version: </label>
-        <select id="version-select"></select>
+    <!-- 版本切换移到卡片外面、上方——它是"选哪张卷子"，
+         逻辑上先于"这张卷子长什么样"，放卡片里反而像卷子的一个属性。
+         只有同一分类下有多个年份时 JS 才加 .show；
+         考试期间加 .hide-during-exam 强制隐藏，避免中途换年份 -->
+    <div class="exam-version-row">
+        <div id="version-selector-wrap" class="version-selector-wrap">
+            <label for="version-select">Version</label>
+            <select id="version-select"></select>
+        </div>
     </div>
 
-    <div class="testing-header" id="testing-header">
-        <h2>Examination</h2>
+    <div class="exam-layout">
 
-        <div class="timer-group">
-            <span id="testing-timer" class="testing-timer">Timer: 00:00</span>
-            <button id="timer-toggle-btn" disabled>Hide Timer</button>
+        <!-- 考卷卡片：一条矮的横向条。
+             id 和状态 class 一个没动：JS 靠 #testing-header 上的
+             exam-in-progress / exam-finished 切状态，靠 header.querySelector('h2')
+             找标题，靠那几个 id 找按钮。 -->
+        <div class="testing-header exam-card" id="testing-header">
+
+            <div class="exam-card-main">
+                <h2>Examination</h2>
+
+                <!-- 元信息回到一行紧凑排布（原来是两个大方块，那会把卡片撑高）。
+                     题目数由 JS 在拉到题目之后填真实值。
+                     ⚠️ 这里没有「难度」：卷子级别的难度数据库里没有 -->
+                <div class="exam-meta">
+                    <span class="exam-meta-item">
+                        <i class="fa-regular fa-file-lines"></i>
+                        <strong id="exam-question-count">—</strong> questions
+                    </span>
+                    <span class="exam-meta-item">
+                        <i class="fa-regular fa-clock"></i>
+                        110 minutes
+                    </span>
+
+                    <!-- 上次考过。默认 display: none，只有真的考过才由 JS 显示 -->
+                    <span class="exam-meta-item exam-meta-attempt" id="exam-last-attempt" style="display: none;">
+                        <i class="fa-regular fa-circle-check"></i>
+                        <span></span>
+                    </span>
+                </div>
+            </div>
+
+            <div class="exam-card-actions">
+                <!-- 开考前整组隐藏：那时候既没有在走的计时器，
+                     也没有可隐藏的东西，两个控件都没意义 -->
+                <div class="timer-group">
+                    <span id="testing-timer" class="testing-timer">Timer: 00:00</span>
+                    <button id="timer-toggle-btn" disabled>Hide Timer</button>
+                </div>
+
+                <!-- 准备阶段的退路。那一步会把页头、切换器、导航栏全收起，
+                     没有这个按钮的话用户改主意了只能刷新页面。
+                     默认不显示，只在 body.exam-ready-mode 下出现 -->
+                <button type="button" id="exam-cancel-ready-btn">Back</button>
+
+                <button id="testing-start-btn"><i class="fa-solid fa-play"></i> Begin Examination</button>
+                <button id="testing-retake-btn" style="display: none;">Retake Test</button>
+            </div>
         </div>
 
-        <button id="testing-start-btn">Start Examination</button>
-        <button id="testing-retake-btn" style="display: none;">Retake Test</button>
+        <!-- 说明紧跟在考卷卡片下面。放最后的话要滚过四块分析才看得到，
+             而"开始之前该知道的规则"应该在按下 Begin 之前就被读到。
+             这一块是唯一不带 data-mock 的——它不声称任何事实 -->
+        <aside class="exam-info-panel">
+            <h3>Before you start</h3>
+            <ul>
+                <li>The timer starts the moment you press Begin — not when the page loads.</li>
+                <li>Solutions stay hidden until you submit.</li>
+                <li>You can hide the timer if it distracts you.</li>
+                <li>Retake as many times as you like.</li>
+
+                <!-- ⚠️ 这一条描述的是【还没做的功能】，所以单独标成 Coming soon，
+                     不能跟上面那几条混在一起——那几条是当前真实行为，
+                     混在一起学生分不清哪些是现在就有的。
+                     
+                     要真正实现"记录最高分"，需要：
+                       1. 标准答案结构化（现在 question_solution 是纯文本，没法自动比对）
+                       2. 答题输入界面
+                       3. 判分逻辑
+                       4. Exam_Completions 加分数字段（现在只有 user_id / paper_id / completed_at）
+                       5. 交卷时比较取高
+                     做完之后把 is-upcoming 和角标去掉即可 -->
+                <li class="is-upcoming">Your best attempt is recorded.<span class="upcoming-tag">Coming soon</span></li>
+            </ul>
+        </aside>
+
+
+        <!-- 分析板块排在说明下面。
+             ⚠️⚠️ 这四块【全是假数据】，由 EXAM_ANALYTICS_MOCK 开关控制，
+             见 testing-engine.js 顶部。要真数据的话每一项需要什么，那里写了。 -->
+        <div class="exam-analytics-grid">
+
+            <!-- ⚠️ 这两块只在【交卷之后】出现（is-result-only）。
+                 考试前既没有本次成绩、也谈不上"历次"里包含这一次，
+                 摆在那儿只会让人以为那是当前这场的数据 -->
+            <!-- ⚠️ data-mock 从整张卡挪到了卡里【确实是假的】那几块。
+                 挂在 <section> 上的时候，EXAM_ANALYTICS_MOCK 改成 false
+                 会把 Your score 和 Time spent 这两个真数字一起藏掉。
+
+                 这张卡现在是混合的：
+                   Your score   真（判分算出来的，见 applyRealScore）
+                   Ranking      假（要跨用户聚合，这个网站算不出来）
+                   Time spent   真（交卷时量出来的，见 applyTimeSpentStat）
+                   下面的对比条  假（比的是班级平均） -->
+            <section class="exam-analytics-card is-result-only is-primary">
+                <h3>Your performance</h3>
+                <div class="exam-stat-grid">
+                    <!-- ⚠️ 初始值必须是 "—"，不能是一个具体数字。
+                         这里以前写的是 92%，而判分走不下去时（比如这张卷子
+                         没录测试用例）JS 不会覆盖它——学生交完卷看到的
+                         就是这个凭空捏造的 92%，长得跟真分数一模一样。
+                         真分数由 applyRealScore 填；填不出来时
+                         setNoAutoScore 会在卡片下面写明原因 -->
+                    <div class="exam-stat">
+                        <span class="exam-stat-value">—</span>
+                        <span class="exam-stat-label">Your score</span>
+                    </div>
+                    <div class="exam-stat" data-mock="true">
+                        <span class="exam-stat-value exam-stat-accent">Top 15<span class="exam-stat-unit">%</span></span>
+                        <span class="exam-stat-label">Ranking</span>
+                    </div>
+                    <!-- 原来是 Class average（假）。换成考试用时——真数据，
+                         由 applyTimeSpentStat 在交卷时填。
+                         exam-stat-muted 一并去掉：那个 class 的意思是
+                         "这不是你的数据"，用时是本人的 -->
+                    <div class="exam-stat">
+                        <span class="exam-stat-value">—</span>
+                        <span class="exam-stat-label">Time spent</span>
+                    </div>
+                </div>
+
+                <!-- 整块标 mock：它唯一的作用是跟班级平均比，
+                     而班级平均这个网站算不出来。没有班级数据的话
+                     只剩一根 You 的进度条，比了个寂寞 -->
+                <div class="exam-compare" data-mock="true">
+                    <div class="exam-compare-row">
+                        <span class="exam-compare-label">You</span>
+                        <div class="exam-compare-track"><div class="exam-compare-fill is-you" style="width: 92%;"></div></div>
+                        <span class="exam-compare-num">92%</span>
+                    </div>
+                    <div class="exam-compare-row">
+                        <span class="exam-compare-label">Class</span>
+                        <div class="exam-compare-track"><div class="exam-compare-fill" style="width: 78%;"></div></div>
+                        <span class="exam-compare-num">78%</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="exam-analytics-card is-result-only" data-mock="true">
+                <h3>Previous attempts</h3>
+                <ol class="exam-attempts">
+                    <li>
+                        <span class="exam-attempt-no">Attempt 1</span>
+                        <span class="exam-attempt-score">85%</span>
+                        <span class="exam-attempt-date">Jul 20</span>
+                    </li>
+                    <li>
+                        <span class="exam-attempt-no">Attempt 2</span>
+                        <span class="exam-attempt-score">92%</span>
+                        <span class="exam-attempt-date">Jul 30</span>
+                        <span class="exam-attempt-delta"><i class="fa-solid fa-arrow-up"></i> 7%</span>
+                    </li>
+                </ol>
+            </section>
+
+            <section class="exam-analytics-card" data-mock="true">
+                <h3>Exam readiness</h3>
+                <ul class="exam-readiness-list">
+                    <li>
+                        <span class="exam-readiness-label">Practice</span>
+                        <div class="exam-readiness-bar"><div class="exam-readiness-fill" style="width: 82%;"></div></div>
+                        <span class="exam-readiness-num">82%</span>
+                    </li>
+                    <li>
+                        <span class="exam-readiness-label">Revision</span>
+                        <div class="exam-readiness-bar"><div class="exam-readiness-fill" style="width: 90%;"></div></div>
+                        <span class="exam-readiness-num">90%</span>
+                    </li>
+                    <li>
+                        <span class="exam-readiness-label">Marked</span>
+                        <div class="exam-readiness-bar"><div class="exam-readiness-fill" style="width: 75%;"></div></div>
+                        <span class="exam-readiness-num">75%</span>
+                    </li>
+                    <li class="is-overall">
+                        <span class="exam-readiness-label">Overall</span>
+                        <div class="exam-readiness-bar"><div class="exam-readiness-fill" style="width: 82%;"></div></div>
+                        <span class="exam-readiness-num">82%</span>
+                    </li>
+                </ul>
+            </section>
+
+            <section class="exam-analytics-card" data-mock="true">
+                <h3>Difficulty analysis</h3>
+                <div class="exam-difficulty-stars">
+                    <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-regular fa-star"></i>
+                </div>
+                <p class="exam-analytics-note">Most students score 70–80%.</p>
+
+                <h4 class="exam-subhead">Hard topics</h4>
+                <div class="exam-topic-tags">
+                    <span data-tip="45% of students missed this topic.">Recursion</span>
+                    <span data-tip="38% of students missed this topic.">Pointers</span>
+                    <span data-tip="31% of students missed this topic.">Memory management</span>
+                </div>
+            </section>
+
+        </div>
+
     </div>
 
     <div id="testing-questions" style="display: none;">
@@ -65,14 +258,14 @@
 
     <!-- 首页：标题 + 两张功能卡片 -->
     <div class="revision-view active" id="revision-view-landing">
-        <div class="revision-hero">
-            <h2>Revision Center</h2>
-            <p>Review your mistakes and build your personalized exam preparation sheet.</p>
-        </div>
-
+        <!-- 这里原本有个 "Revision Center" hero（标题 + 一句说明），删掉了——
+             上面的板块切换器已经写着 "Revision"，两张卡片本身也自带标题和说明 -->
         <div class="revision-cards">
             <div class="revision-feature-card">
-                <div class="revision-feature-icon"><i class="fa-solid fa-star"></i></div>
+                <!-- 图标跟题目行上那个「标记」按钮保持一致（fa-location-dot）。
+                     原来这里是星星，但题目上标记用的是定位图标，
+                     空状态提示里也是定位图标——只有这张卡片不一样 -->
+                <div class="revision-feature-icon"><i class="fa-solid fa-location-dot"></i></div>
                 <h3>Marked Questions</h3>
                 <p>Review questions you previously marked during practice.</p>
                 <button type="button" class="revision-card-btn" data-revision-nav="marked-questions">Start Review</button>

@@ -73,6 +73,17 @@
 
 
 
+    <!-- 沉浸模式开关。放在 body 直属层、用 fixed 定位——
+         沉浸模式会把页头、导航栏、板块切换器、页脚全部收起，
+         这个按钮必须留在外面，否则进去了就出不来。
+         它【任何时候都可见】，不用 hidden 属性——上一版那个恢复按钮
+         带了 hidden 却又写了 display: inline-flex，作者样式盖过 hidden，
+         结果它一直占着一块空位只是看不见 -->
+    <button type="button" class="immersive-toggle" id="immersive-toggle"
+            aria-label="Toggle immersive mode" aria-pressed="false" title="Immersive mode">
+        <i class="fa-solid fa-expand"></i>
+    </button>
+
     <!-- footer -->
     <div id="footer-container"></div>
 
@@ -80,6 +91,11 @@
     <div id="auth-modal-container"></div>
 
     <script src="../../../0. Shared/config.js"></script>
+    <!-- 判分引擎（Pyodide）。必须在 testing-engine.js 【之前】加载，
+         因为后者会调用它导出的 gradeQuestion。
+         Pyodide 本体不在这里下载——那有 3~4MB，
+         grading-engine.js 会在交卷时才按需去拉 -->
+    <script src="grading-engine.js"></script>
     <script src="testing-engine.js"></script>
     <script src="cribsheet-builder.js"></script> 
     <script src="cs1_index.js"></script>

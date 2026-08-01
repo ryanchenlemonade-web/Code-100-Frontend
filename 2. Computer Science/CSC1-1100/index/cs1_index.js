@@ -6,6 +6,7 @@ const navItems = document.querySelectorAll('.bar-items');
 const sectionSwitcher = document.querySelector('.section-switcher');
 const navBar = document.querySelector('.nav-bar');
 const footerContainer = document.getElementById('footer-container');
+const headerWrapper = document.getElementById('header-wrapper');
 
 // 每个 Test 对应的颜色，跟navbar配色保持一致
 // nav 按钮 id 对应数据库里的 paper_category（必须跟 Test_Papers 表里的值完全一致）
@@ -57,20 +58,59 @@ function scrollPageToTop() {
 
 // 进入考试专注模式：隐藏切换器、navbar 和 footer
 // （被 testing-engine.js 里 Testing 模式的「开始考试」逻辑调用）
-function enterExamFocusMode() {
-    if (sectionSwitcher) sectionSwitcher.classList.add('exam-focus-hide');
-    if (navBar) navBar.classList.add('exam-focus-hide');
-    if (footerContainer) footerContainer.classList.add('exam-focus-hide');
+// instant = true 时页面骨架【瞬间】收起，不播 400ms 的折叠动画。
+//
+// 刷新页面恢复考试时要用这个：那些动画是给"刚点下开始按钮"这个动作做反馈的，
+// 恢复时播一遍会让人以为考试是这一刻才开始的。
+//
+// 跟 exitExamFocusMode 的 instant 是同一套机制，两个函数要保持对称——
+// 只有一边支持的话，进去和出来的观感会不一致。
+function enterExamFocusMode(instant = false) {
+    // 页头（logo + 课程名 + Back to Home）也一起收起。
+    // 考试期间那个返回首页的链接尤其不该留着——点一下考试就中断了
+    const targets = [headerWrapper, sectionSwitcher, navBar, footerContainer].filter(Boolean);
+
+    if (instant) targets.forEach(el => el.classList.add('skip-transition'));
+
+    targets.forEach(el => el.classList.add('exam-focus-hide'));
     document.body.classList.add('exam-focus-mode');
+
+    if (instant) {
+        // 强制重排让"没有过渡的那一次布局变化"立刻落定，
+        // 之后再摘掉 skip-transition，下次展开时过渡照常
+        targets.forEach(el => void el.offsetHeight);
+        requestAnimationFrame(() => {
+            targets.forEach(el => el.classList.remove('skip-transition'));
+        });
+    }
 }
 
 // 退出考试专注模式：恢复切换器、navbar 和 footer
 // （被 testing-engine.js 里 Testing 模式的「交卷」逻辑调用）
-function exitExamFocusMode() {
-    if (sectionSwitcher) sectionSwitcher.classList.remove('exam-focus-hide');
-    if (navBar) navBar.classList.remove('exam-focus-hide');
-    if (footerContainer) footerContainer.classList.remove('exam-focus-hide');
+// instant = true 时页面骨架【瞬间】恢复，不播展开动画。
+//
+// 交卷的时候要用这个。默认的展开是有过渡的：页头 350ms、切换器 280ms、
+// 导航栏 400ms、页脚 400ms，加起来最多 500px 的高度在 400ms 里长出来，
+// 把下面所有内容一路往下推——看起来就像页面在往下滑。
+// 而结果卡片的淡入正好同时进行，一边淡入一边被推走，两个位移叠在一起。
+//
+// 骨架瞬间回来、然后结果卡片干净地依次淡入，节奏才对。
+function exitExamFocusMode(instant = false) {
+    const targets = [headerWrapper, sectionSwitcher, navBar, footerContainer].filter(Boolean);
+
+    if (instant) targets.forEach(el => el.classList.add('skip-transition'));
+
+    targets.forEach(el => el.classList.remove('exam-focus-hide'));
     document.body.classList.remove('exam-focus-mode');
+
+    if (instant) {
+        // 强制重排，让"没有过渡的那一次布局变化"立刻落定，
+        // 之后再把 skip-transition 摘掉，下次收起时过渡照常
+        targets.forEach(el => void el.offsetHeight);
+        requestAnimationFrame(() => {
+            targets.forEach(el => el.classList.remove('skip-transition'));
+        });
+    }
 }
 
 // 根据点击的 nav id（test1/test2/...），找到对应分类下的所有版本（年份），
@@ -133,12 +173,42 @@ async function loadContent(id) {
     void contentContainer.offsetWidth;   // 强制重排，这一行不能删
     contentContainer.style.animation = '';
 
-     // 内容加载完后，默认让 Practice 淡入显示
-    const initialSection = document.getElementById('practice-content');
+    // 内容加载完后默认显示 Practice——但如果有未结束的考试，
+    // 就直接落在 Examination 上。
+    //
+    // 不这么做的话，刷新页面会先跳回 Practice，
+    // 而恢复考试的逻辑在 loadTestingQuestions 里、那时候板块早就切走了：
+    // 结果是计时器在后台继续跑，学生却看不到考试界面。
+    //
+    // hasUnfinishedExam 只读 sessionStorage、不依赖任何 DOM，
+    // 所以可以在这个时间点安全调用
+    // typeof 检查是保险：万一以后脚本加载顺序变了，
+    // 不至于让整个 loadContent 抛错、页面一片空白
+    const resumeExam = typeof hasUnfinishedExam === 'function' && hasUnfinishedExam();
+
+    const initialSection = document.getElementById(
+        resumeExam ? 'testing-content' : 'practice-content'
+    );
     if (initialSection) {
+        // 其他板块要藏掉——skeleton 里 practice-content 默认带 active，
+        // 恢复考试时得手动把它摘掉，否则两个板块会同时显示
+        document.querySelectorAll('#content-container .test-section')
+            .forEach(el => el.classList.remove('active'));
+        initialSection.classList.add('active');
+
         initialSection.style.animation = 'none';
         void initialSection.offsetWidth;
         initialSection.style.animation = 'contentFadeIn 0.9s ease forwards';
+    }
+
+    // 切换器上的高亮也要跟着走，否则标题写着 Practice、内容却是 Examination
+    if (resumeExam) {
+        items.forEach(i => i.classList.remove('active'));
+        // 切换器上 Examination 的 id 是 'testing' 不是 'examination'——
+        // 跟 .test-section 的 'testing-content' 对应
+        const examItem = document.getElementById('testing');
+        if (examItem) examItem.classList.add('active');
+        layoutSwitcher();
     }
 
     // Practice 和 Testing 现在各自独立：
@@ -162,12 +232,20 @@ navItems.forEach(item => {
 
         scrollPageToTop();
 
-        // 加载对应内容
-        loadContent(this.id);
-
-        // 切换 Test 时，把板块重置回 Practice，保持一致
-        items.forEach(i => i.classList.remove('active'));
-        document.getElementById('practice').classList.add('active');
+        // 切换 Test 时回到 Practice。
+        //
+        // 必须走 activateSection 而不是手动改 class：
+        // 原来这里是 items.forEach(remove) + practice.add('active')，
+        // 只改了"哪个标签高亮"，没有清掉子页标题（Marked Questions /
+        // Cribsheet Builder 那个 is-subpage 状态），也没重新摆放三个标签的位置。
+        // 结果是从 Cribsheet Builder 直接点 Test 2 时，切换器还写着
+        // "Cribsheet Builder"，但下面已经是 Practice 的内容了。
+        //
+        // 放在 loadContent 之后：那个函数是 async 的，会用 innerHTML 整个重建骨架，
+        // 在它之前操作 .test-section 是白做——那些元素马上会被换掉
+        loadContent(this.id).then(() => {
+            activateSection(document.getElementById('practice'));
+        });
     });
 });
 
@@ -302,6 +380,11 @@ function activateSection(item, direction) {
     setSwitcherSubPageTitle(null);   // 换板块了，子页标题要撤掉
     layoutSwitcher(direction);
 
+    // Examination 的「准备中」状态挂在 body 上，而切板块只是切换
+    // .test-section 的显隐、不重建骨架——不主动清的话，
+    // 点了 Get Ready 之后切到 Practice 再切回来，还停在第二步
+    if (typeof resetExamReadyState === 'function') resetExamReadyState();
+
     scrollPageToTop();
 
     // 隐藏所有板块
@@ -358,3 +441,68 @@ fetch('../../../0.%20Shared/auth-modal.html')
         document.getElementById('auth-modal-container').innerHTML = html;
         if (window.initAuthModal) window.initAuthModal();
     });
+
+
+// ---------- 沉浸模式 ----------
+// 把跟题目无关的东西全部收起：页头、导航栏、板块切换器、页脚。
+// 只留下题目本身。
+//
+// 状态存在 sessionStorage 里，沿用侧边栏折叠当初定下的那条规则：
+// 刷新保持，但从别的页面点进来回到正常模式——新进来的人不该
+// 一上来就面对一个"什么都没有"的页面，还得先找按钮。
+const IMMERSIVE_KEY = 'code100_immersive_mode';
+const immersiveToggle = document.getElementById('immersive-toggle');
+
+// 浏览器能区分这次是刷新还是从别处导航过来的。
+// reload = 刷新；back_forward = 用前进/后退回到这个页面——
+// 这两种都算"还在原来那次浏览里"，应该保持沉浸状态。
+// navigate（从首页点进来、或者直接输网址）则回到正常模式：
+// 新进来的人不该一上来就面对一个"什么都没有"的页面，还得先找按钮。
+//
+// ⚠️ 这段逻辑原来是引用 shouldKeepSidebarState()，那是侧边栏时代的函数，
+// 侧边栏整个撤掉时它一起被删了，而我沿用了它——结果这里抛 ReferenceError，
+// 而它在 addEventListener 之前，点击监听根本没挂上，按钮是个死按钮。
+function shouldKeepImmersiveState() {
+    try {
+        const nav = performance.getEntriesByType('navigation')[0];
+        if (!nav) return false;
+        return nav.type === 'reload' || nav.type === 'back_forward';
+    } catch (e) {
+        // 老浏览器拿不到这个 API，一律按"新进来"处理
+        return false;
+    }
+}
+
+function setImmersiveMode(on) {
+    document.body.classList.toggle('immersive-mode', on);
+
+    if (immersiveToggle) {
+        immersiveToggle.setAttribute('aria-pressed', String(on));
+        immersiveToggle.title = on ? 'Exit immersive mode' : 'Immersive mode';
+        const icon = immersiveToggle.querySelector('i');
+        if (icon) icon.className = on ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+    }
+
+    sessionStorage.setItem(IMMERSIVE_KEY, String(on));
+}
+
+if (immersiveToggle) {
+    const savedImmersive = sessionStorage.getItem(IMMERSIVE_KEY) === 'true';
+    setImmersiveMode(shouldKeepImmersiveState() ? savedImmersive : false);
+
+    immersiveToggle.addEventListener('click', () => {
+        setImmersiveMode(!document.body.classList.contains('immersive-mode'));
+    });
+
+    // Esc 退出。进去之后页面上没剩几个可点的东西，留个键盘出口。
+    // 光标在输入框里的时候不拦——那时候 Esc 可能是用来取消输入的
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (!document.body.classList.contains('immersive-mode')) return;
+
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+        setImmersiveMode(false);
+    });
+}

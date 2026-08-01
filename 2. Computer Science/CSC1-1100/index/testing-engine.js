@@ -658,6 +658,143 @@ function formatMMSS(totalSeconds) {
 // 获取 Examination（原 Testing）模式题目：header（标题/计时器/按钮）已经是骨架里现成的静态结构，
 // 这里负责找到这些元素、重置初始状态、（第一次进入时）绑定事件，再去后端拉题目数据填进 #testing-questions
 // paperTitle：banner 左边显示的考卷名称，例如 "Test 1 2020"
+// ============================================================
+// 把 Examination 从「准备中」退回第一步。
+//
+// 三个地方会用到：
+//   1. loadTestingQuestions 的重置分支——换卷子、换年份、重考
+//   2. 切换板块（Practice / Revision）——见 cs1_index.js 的 activateSection
+//   3. 换 Test（navbar）——那条路径最终也会走到 activateSection
+//
+// 第 2 条是后补的：状态挂在 body 上，而切板块只是切换 .test-section 的显隐、
+// 不重建骨架，所以 loadTestingQuestions 根本不会跑，
+// 结果是"点了 Get Ready 之后切到 Practice 再切回来，还停在第二步"
+function resetExamReadyState() {
+    // ⚠️ 考试进行中时什么都不做。
+    //
+    // 这个函数在切板块时也会被调用（cs1_index.js 的 activateSection），
+    // 而刷新恢复考试的流程里正好会切一次板块——结果是刚恢复好的考试状态
+    // 立刻被这里重置掉，学生看到的是 Get Ready 页面，
+    // 但计时器还在后台跑。
+    //
+    // 判断依据用 exam-in-progress 而不是 sessionStorage：
+    // 前者是"界面当前处于什么状态"，后者是"有没有未结束的场次"，
+    // 这里要拦的是前者
+    const headerEl = document.getElementById('testing-header');
+    if (headerEl && headerEl.classList.contains('exam-in-progress')) return;
+
+    document.body.classList.remove('exam-ready-mode');
+
+    // ⚠️ 这里【不清】exam-result-mode。这个函数在切板块时也会被调用
+    // （见 cs1_index.js 的 activateSection），而"考完试去 Practice 看一眼
+    // 再切回来"不该把成绩清掉——卡片上还写着 Correction、答案也还摊开着，
+    // 只有那两块结果卡消失，状态就对不上了。
+    // 成绩的清理放在 loadTestingQuestions 的重置分支里：
+    // 重考、换卷子、换年份才是真的"这一场结束了"
+
+    const header = document.getElementById('testing-header');
+    if (header) header.classList.remove('exam-ready');
+
+    const startBtn = document.getElementById('testing-start-btn');
+    // 只在按钮还处于「可以开始」的状态时才改文案——
+    // 考试进行中按钮是隐藏的，不该被这里改回 Get Ready
+    if (startBtn && !header?.classList.contains('exam-in-progress')) {
+        startBtn.innerHTML = '<i class="fa-solid fa-arrow-right"></i> Get Ready';
+    }
+}
+
+// ⚠️⚠️  考试分析板块：里面的数字【全部是编的】  ⚠️⚠️
+// ============================================================
+// 分数、排名、班级平均、就绪度、难度星级、常错知识点、历次尝试——
+// 一个都不是真的，也没有任何数据来源。
+//
+// Code 100 【不判分】：学生自己对照答案，系统永远不知道做对几道。
+// 所以这些不是"等接口接上就有"的占位符，而是"要先建一整套判题系统才可能有"。
+//
+// 这个开关默认 false，整块不显示。想看设计效果就临时改成 true，
+// 但【不要带着 true 上线】——Code 100 是学生在用的站点，
+// 页面上写着 "92% · Top 15%"，没人会知道那是假的。
+//
+// 每一项要变成真数据分别需要什么：
+//   Your score / Previous attempts  → 先做判题：标准答案结构化、答题输入、比对逻辑
+//   Ranking / Class average         → 在判题之上再做跨用户聚合
+//   Exam readiness                  → 定义"就绪"由哪些行为构成，并埋点记录
+//   Difficulty (star rating)        → 聚合这张卷子所有题的 avg_rating（这项最容易，后端加个接口就行）
+//   Common challenging topics       → 题目要先打知识点标签，目前只有题型分类
+const EXAM_ANALYTICS_MOCK = true;
+
+function applyExamAnalyticsVisibility() {
+    document.querySelectorAll('[data-mock="true"]').forEach(el => {
+        el.style.display = EXAM_ANALYTICS_MOCK ? '' : 'none';
+    });
+}
+
+// 当前用户每张卷子的完成时间。进 Examination 页面时拉一次就够，
+// 之后切年份、切 Test 都用缓存——这个数据在一次浏览里不会变
+// （唯一会变的时机是本人刚交卷，那时候会主动清缓存）。
+//
+// 后端那张表 user_id + paper_id 有唯一约束，重复交卷走 update，
+// 所以一张卷子只会有一个时间，不用在前端做"取最近一次"的处理。
+let examCompletionsCache = null;
+
+function loadExamCompletions() {
+    if (examCompletionsCache) return Promise.resolve(examCompletionsCache);
+
+    const token = localStorage.getItem('csci1100_auth_token');
+    if (!token) {
+        // 没登录就没有"我的记录"，返回空对象而不是报错——
+        // 这只是卡片上的一行附加信息，不该影响页面能不能用
+        examCompletionsCache = {};
+        return Promise.resolve(examCompletionsCache);
+    }
+
+    return fetch(`${APP_API_BASE}/api/progress/exam-completions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.ok ? res.json() : {})
+        .then(data => {
+            examCompletionsCache = data || {};
+            return examCompletionsCache;
+        })
+        .catch(error => {
+            console.error('Failed to load exam completions:', error);
+            examCompletionsCache = {};
+            return examCompletionsCache;
+        });
+}
+
+// 把 ISO 时间串格式化成 "Mar 12" 这种简短形式。
+// 今年的省略年份，往年的带上——"Mar 12" 在跨年之后会有歧义
+function formatLastAttempt(isoString) {
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const sameYear = date.getFullYear() === new Date().getFullYear();
+    return date.toLocaleDateString('en-US', sameYear
+        ? { month: 'short', day: 'numeric' }
+        : { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// 在考卷卡片上显示"上次考过"。没考过就整项不显示——
+// 显示 "Never attempted" 是一句废话，空着更干净
+function renderLastAttempt(paperId) {
+    const el = document.getElementById('exam-last-attempt');
+    if (!el) return;
+
+    loadExamCompletions().then(map => {
+        const iso = map[String(paperId)];
+        const text = iso ? formatLastAttempt(iso) : null;
+
+        if (!text) {
+            el.style.display = 'none';
+            return;
+        }
+
+        el.style.display = '';
+        el.querySelector('span').textContent = `Last attempted ${text}`;
+    });
+}
+
 // 交卷完成的时候记一笔"这个用户完成了这张卷子"，给 Profile 页面的 Practice Progress 用。
 // 没登录的话直接跳过，不影响正常交卷流程（考试功能本身不强制登录）。
 function recordExamCompletion(paperId) {
@@ -667,7 +804,11 @@ function recordExamCompletion(paperId) {
     fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/complete`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
-    }).catch(error => console.error('Failed to record exam completion:', error));
+    })
+        // 刚记了一笔，缓存就过期了。清掉，下次进这张卷子会重新拉，
+        // 能看到"上次考过 = 今天"
+        .then(() => { examCompletionsCache = null; })
+        .catch(error => console.error('Failed to record exam completion:', error));
 }
 
 function loadTestingQuestions(paperId, paperTitle) {
@@ -692,19 +833,60 @@ function loadTestingQuestions(paperId, paperTitle) {
     header.dataset.currentPaperId = paperId;
     header.dataset.currentPaperTitle = paperTitle;
 
-    // 重置成初始状态（切换 Test、切换年份版本、或点「Retake Test」重考时都会跑一遍这里）
-    header.classList.remove('exam-in-progress', 'exam-finished');
-    headerTitle.textContent = paperTitle;
-    triggerFadeIn(headerTitle);   // 切换年份版本时，标题文字有个淡入过渡，不是瞬间跳变
-    timerDisplay.className = 'testing-timer';
-    timerDisplay.textContent = `Timer: ${formatMMSS(COUNTDOWN_TOTAL_SECONDS)}`;
-    toggleTimerBtn.style.display = 'inline-block';   // 交卷后会被隐藏，这里重新显示回来
-    toggleTimerBtn.disabled = true;
-    toggleTimerBtn.textContent = 'Hide Timer';
-    startBtn.disabled = false;
-    startBtn.textContent = 'Start Examination';
-    startBtn.style.display = 'inline-block';
+    renderLastAttempt(paperId);
+    applyExamAnalyticsVisibility();   // 骨架是整个重建的，每次都要重新应用一次
+
+    // 有未结束的考试就【整个跳过重置】，直接恢复到考试中。
+    //
+    // 之前的做法是「先重置、后面再恢复」，依赖两者的执行先后。
+    // 但 loadTestingQuestions 可能被调用不止一次（切板块、版本下拉框初始化都会触发），
+    // 第二次的重置会把第一次恢复好的状态又抹掉——
+    // 表现就是落在 Examination 却退回了 Get Ready，而计时器还在后台跑。
+    //
+    // 改成在源头判断，不管调用多少次、什么顺序，都不会覆盖已恢复的考试。
+    const pendingSession = readExamSession(paperId);
+
+    if (pendingSession) {
+        // 恢复的场次：标题要更新，其余状态一概不动。
+        // 真正切到「考试中」是在 fetch 的回调里做的——那时候题目元素才存在。
+        // 结算状态（exam-result-mode）也不清：这场考试还没结束
+        headerTitle.textContent = paperTitle;
+    } else {
+
+        // 重置成初始状态（切换 Test、切换年份版本、或点「Retake Test」重考时都会跑一遍这里）
+        header.classList.remove('exam-in-progress', 'exam-finished');
+        headerTitle.textContent = paperTitle;
+        triggerFadeIn(headerTitle);   // 切换年份版本时，标题文字有个淡入过渡，不是瞬间跳变
+        timerDisplay.className = 'testing-timer';
+        // 开考之前显示的是"时长说明"而不是一个看起来在走的计时器——
+        // "Timer: 110:00" 会让人以为已经在倒计时了。
+        // 点 Start 之后 renderTimerDisplay 会把它换成真正的倒计时
+        timerDisplay.textContent = `${Math.round(COUNTDOWN_TOTAL_SECONDS / 60)} min limit`;
+        toggleTimerBtn.style.display = 'inline-block';   // 交卷后会被隐藏，这里重新显示回来
+        toggleTimerBtn.disabled = true;
+        toggleTimerBtn.textContent = 'Hide Timer';
+        startBtn.disabled = false;
+        // 回到第一步：Get Ready。
+        // 用 innerHTML 不用 textContent——按钮里有图标，
+        // textContent 会把它冲掉，重考一次之后图标就没了
+        startBtn.innerHTML = '<i class="fa-solid fa-arrow-right"></i> Get Ready';
+        startBtn.classList.remove('is-leaving');   // 上一轮考试的淡出动画可能还没播完
+        startBtn.style.display = 'inline-block';
+
+        // 清掉「准备中」状态。换卷子、换年份、重考都会走到这里
+        resetExamReadyState();
+
+        // 会话也要清。重考是新的一场，不该沿用上一场的剩余时间；
+        // 换卷子/换年份更是另一场考试
+        clearExamSession();
+
+
+        // 结算状态也要清掉，否则重考时 Your performance / Previous attempts
+        // 会在还没开始考的时候就挂在那儿
+        document.body.classList.remove('exam-result-mode');
+    }
     questionsContainer.style.display = 'none';
+    questionsContainer.classList.remove('exam-questions-enter');
     questionsContainer.innerHTML = '';
     submitBtn.disabled = true;
     submitBtn.textContent = 'All Done!!';
@@ -726,19 +908,39 @@ function loadTestingQuestions(paperId, paperTitle) {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
 
+        // 准备阶段的退路
+        const cancelReadyBtn = document.getElementById('exam-cancel-ready-btn');
+        if (cancelReadyBtn) {
+            cancelReadyBtn.addEventListener('click', () => resetExamReadyState());
+        }
+
+        // Esc 也能退回。页头和导航栏在准备阶段是收起的，
+        // 多留一个键盘出口
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            if (!document.body.classList.contains('exam-ready-mode')) return;
+
+            const t = e.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+            resetExamReadyState();
+        });
+
         startBtn.addEventListener('click', () => {
-            questionsContainer.style.display = 'block';
-            submitBtn.style.display = 'inline-block';
-            startTestingTimer();
-            submitBtn.disabled = false;
-            toggleTimerBtn.disabled = false;
-            startBtn.disabled = true;
-            // 点击后彻底移除 Start 按钮（不只是靠 CSS 隐藏），避免依赖 class 状态
-            startBtn.style.display = 'none';
-            timerDisplay.classList.add('timing-active');
-            header.classList.add('exam-in-progress');
-            if (versionWrap) versionWrap.classList.add('hide-during-exam');   // 考试期间隐藏版本切换，避免中途换年份
-            enterExamFocusMode();
+            // ---- 第一步：Get Ready ----
+            // 不开始考试，只是把干扰收掉、把规则摆到眼前。
+            // 分析板块那些数字在准备考试的时候没有意义，反而分散注意力；
+            // 说明这时候才出现，是因为它要在按下 Begin 之前被读到——
+            // 一直摆在那儿反而会被当成装饰略过去
+            if (!header.classList.contains('exam-ready')) {
+                header.classList.add('exam-ready');
+                document.body.classList.add('exam-ready-mode');
+                startBtn.innerHTML = '<i class="fa-solid fa-play"></i> Begin Examination';
+                return;
+            }
+
+            // ---- 第二步：真正开考 ----
+            enterExamInProgressState();
         });
 
         submitBtn.addEventListener('click', () => {
@@ -761,6 +963,13 @@ function loadTestingQuestions(paperId, paperTitle) {
             timerDisplay.classList.remove('timing-active', 'timer-overtime', 'timer-warning-10', 'timer-warning-5', 'timer-warning-1', 'timer-hidden');
             timerDisplay.classList.add('timer-finished');
 
+            // 交卷后作答不能再改。用 readonly 不用 disabled——
+            // disabled 的文本没法选中复制，而学生往往想把自己的答案
+            // 复制出来跟标准答案对照
+            document.querySelectorAll('#testing-questions .answer-editor-input').forEach(el => {
+                el.readOnly = true;
+            });
+
             document.querySelectorAll('.testing-answer').forEach(el => {
                 el.classList.add('show');
             });
@@ -774,14 +983,98 @@ function loadTestingQuestions(paperId, paperTitle) {
 
             backToTopBtn.style.display = 'inline-block';
             retakeBtn.style.display = 'inline-block';
-            exitExamFocusMode();
+            // true = 瞬间恢复页面骨架，不播展开动画。
+            // 带过渡的话页头/导航栏/切换器会在 400ms 里长出最多 500px，
+            // 把下面的结果卡片一路往下推，看起来像页面在滑动
+            exitExamFocusMode(true);
+
+            // 交卷时把所有作答整体提交一次兜底。
+            // 平时是边打边存的，但最后 800ms 内敲的东西可能还在防抖里没发出去，
+            // 而且中途有请求失败的话这里能补上
+            // 这场考试结束了，清掉会话——否则刷新后又会被恢复成"考试中"
+            clearExamSession();
+
+            flushAllAnswers(header.dataset.currentPaperId);
+
+            // 判分。放在 flush 之后——虽然判分读的是输入框里的当前值、
+            // 不依赖后端那份，但顺序上先保存再判分更符合直觉
+            gradeExamAnswers(header.dataset.currentPaperId);
+
+            // 用时跟判分【互不依赖】：这张卷子一条测试用例都没录、
+            // 判分整个跳过的时候，用时照样要显示出来
+            applyTimeSpentStat(totalElapsedSeconds);
+
+            // 挂上结算状态：Your performance 和 Previous attempts 这两块
+            // 只在交卷之后才显示。
+            // ⚠️ 必须在下面测量滚动位置【之前】做——这两块一出现，
+            // 页面高度和导航栏的自然位置都会变，先量后显示的话会跳错地方
+            document.body.classList.add('exam-result-mode');
+
+            // 交卷时人一般停在题目中间，结果在上面。瞬间跳过去。
+            //
+            // 目标位置不是页面最顶端，而是【导航栏刚好吸顶】的那一点：
+            // .nav-bar 是 position: sticky; top: 0，所以那一点就是它在
+            // 文档流里的自然位置。跳到这里的好处是页头（logo + Back to Home）
+            // 正好滚出视野，结果卡片占满屏幕，同时导航栏还在手边。
+            //
+            // 先跳到 0 再测量：导航栏这时候可能正吸在顶上，
+            // 直接读 getBoundingClientRect 拿到的是"吸住之后"的位置，不是自然位置。
+            // 归零之后它回到文档流里，量出来才准。
+            // 两次 scrollTo 在同一帧内完成，浏览器只会绘制最后那次，看不到中间状态。
+            window.scrollTo({ top: 0, behavior: 'auto' });
+
+            const navBarEl = document.querySelector('.nav-bar');
+            if (navBarEl) {
+                window.scrollTo({
+                    top: navBarEl.getBoundingClientRect().top + window.scrollY,
+                    behavior: 'auto'
+                });
+            }
+
+            // 分析板块交卷后重新出现：淡入 + 进度条从 0 长出来。
+            //
+            // ⚠️ 必须【等页面真的到顶了】再触发。跟 scrollTo 同一时刻加 class 的话，
+            // 浏览器这一帧既要处理滚动又要起动画，视觉上是"边跳边播"，
+            // 动画的头几帧被跳转吃掉了，显得仓促。
+            //
+            // 用 requestAnimationFrame 套两层：第一层等这一帧的样式和布局算完
+            // （滚动位置在这时才真正落定），第二层才加 class，动画从下一帧干净地起步。
+            // setTimeout(0) 也能凑效，但 rAF 跟浏览器的绘制节奏对齐，更稳。
+            const analyticsGrid = document.querySelector('.exam-analytics-grid');
+            if (analyticsGrid) {
+                analyticsGrid.classList.remove('is-revealing');
+
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        analyticsGrid.classList.add('is-revealing');
+
+                        // 播完把 class 去掉。动画里有 transform，animation-fill-mode
+                        // 会让最后一帧的 transform 永久留在元素上，而任何非 none 的
+                        // transform 都会让后代 position: fixed 相对它定位而不是相对视口
+                        // 2200ms：最后一条进度条的延迟 0.78s + 时长 1s = 1.78s，
+                        // 留出余量。这个数【必须大于 CSS 里最长的那条动画】，
+                        // 小了会把动画砍断——调动画时长时别忘了同步改这里
+                        setTimeout(() => analyticsGrid.classList.remove('is-revealing'), 2200);
+                    });
+                });
+            }
         });
 
         retakeBtn.addEventListener('click', () => {
             stopTestingTimer();
+
+            const retakePaperId = header.dataset.currentPaperId;
+
+            // 重考是全新的一场，把上一次的作答清干净。
+            //
+            // 时机放在【点 Retake】而不是【交卷】：交卷后学生要拿自己写的
+            // 跟标准答案对照，那时候清掉就没得看了。
+            // （交卷后输入框是 readonly 但文字可选中复制，就是为了这个。）
+            clearAllAnswers(retakePaperId);
+
             // 用 header.dataset 里记录的当前 paperId/title，而不是绑定时闭包捕获的参数，
             // 避免中途切换过年份版本后，Retake 又跑回最早绑定时的那份考卷
-            loadTestingQuestions(Number(header.dataset.currentPaperId), header.dataset.currentPaperTitle);
+            loadTestingQuestions(Number(retakePaperId), header.dataset.currentPaperTitle);
         });
     }
 
@@ -792,18 +1085,59 @@ function loadTestingQuestions(paperId, paperTitle) {
         .then(data => {
             questionsContainer.innerHTML = '';   // 清掉加载提示，再填真正的题目
 
+            // 把真实题目数填进考卷卡片。题目是进页面就拉的、不是点 Start 才拉，
+            // 所以这个数在开考前就拿得到，不用编
+            const countEl = document.getElementById('exam-question-count');
+            if (countEl) countEl.textContent = String(data.length);
+
             data.forEach(question => {
                 const wrapper = buildQuestionBlock(question);
 
+                // 答题区和标准答案包在同一个容器里，交卷后并排显示。
+                //
+                // 并排的好处是能逐行对照，不用上下滚动来回看。
+                // 代价是两边宽度各减半，长代码会挤——所以窄屏下 CSS 会
+                // 自动堆叠回上下排列（见 .answer-compare 的媒体查询）
+                const compare = document.createElement('div');
+                compare.className = 'answer-compare';
+
+                compare.appendChild(buildAnswerEditor(question.id));
+
                 if (question.question_solution) {
+                    const solutionBox = document.createElement('div');
+                    solutionBox.className = 'answer-solution-box';
+
+                    const solutionLabel = document.createElement('div');
+                    solutionLabel.className = 'answer-editor-label';
+                    solutionLabel.textContent = 'Model answer';
+                    solutionBox.appendChild(solutionLabel);
+
                     const solutionPre = document.createElement('pre');
                     solutionPre.className = 'answer-code testing-answer';
                     solutionPre.textContent = question.question_solution;
-                    wrapper.appendChild(solutionPre);
+                    solutionBox.appendChild(solutionPre);
+
+                    compare.appendChild(solutionBox);
                 }
+
+                wrapper.appendChild(compare);
 
                 questionsContainer.appendChild(wrapper);
             });
+
+            // 题目渲染完再把已保存的作答填回去。
+            // 中途刷新、误关标签页都能接着写
+            restoreSavedAnswers(paperId);
+
+            // 有未结束的考试就直接恢复到考试中，跳过 Get Ready 那两步。
+            // ⚠️ 必须放在题目渲染【之后】——恢复要显示题目容器、
+            // 那时候元素得已经存在。
+            // 也必须在 restoreSavedAnswers 之后：先把写过的内容填回去，
+            // 再切到考试中状态，顺序反了的话学生会先看到空白的输入框
+            const session = readExamSession(paperId);
+            if (session) {
+                enterExamInProgressState(session.endTime);
+            }
 
             triggerFadeIn(questionsContainer);
         })
@@ -811,6 +1145,657 @@ function loadTestingQuestions(paperId, paperTitle) {
             console.error('Failed to Obtain Testing Questions:', error);
             showQuestionsError(questionsContainer);
         });
+}
+
+// 切到「考试进行中」的状态。
+//
+// 开考和「刷新后恢复」走的是同一个函数——两边要做的事几乎一样
+// （切状态、起计时器、显示题目、收起页面骨架），
+// 分开写两份必然会漏掉其中一处，改动时也容易只改一边。
+//
+// resumeEndTime 有值 = 从刷新中恢复：计时器沿用原来的结束时间，
+// 并且【跳过所有入场动画】——那些动画是给"刚点下按钮"这个动作做反馈的，
+// 刷新后播一遍会让人以为考试是这一刻才开始的。
+function enterExamInProgressState(resumeEndTime = null) {
+    const header = document.getElementById('testing-header');
+    const timerDisplay = document.getElementById('testing-timer');
+    const startBtn = document.getElementById('testing-start-btn');
+    const submitBtn = document.getElementById('testing-submit-btn');
+    const toggleTimerBtn = document.getElementById('timer-toggle-btn');
+    const questionsContainer = document.getElementById('testing-questions');
+    const versionWrap = document.getElementById('version-selector-wrap');
+
+    if (!header || !timerDisplay || !startBtn || !submitBtn || !questionsContainer) return;
+
+    const isResume = !!resumeEndTime;
+
+    // 三个状态互斥，两个标记都要摘掉。
+    //
+    // body 上的 exam-ready-mode：不摘的话考试期间会同时挂着它和 exam-focus-mode，
+    // 两条针对 .exam-info-panel 的规则特异性一模一样，
+    // 谁生效取决于它们在文件里的先后——这种依赖太脆。
+    //
+    // header 上的 exam-ready：漏掉过一次。它不影响样式（CSS 规则都挂在
+    // body.exam-ready-mode 上），但按钮的分支判断读的是它——
+    //     if (!header.classList.contains('exam-ready')) { 走第一步 }
+    // 留着的话状态就不一致了，而且刷新恢复之后 header 上会同时有
+    // exam-ready 和 exam-in-progress，看 class 完全读不出当前是哪一步
+    document.body.classList.remove('exam-ready-mode');
+    header.classList.remove('exam-ready');
+
+    // 状态标志全部立刻设置，只有【显隐】走动画——
+    // 逻辑状态和视觉过渡分开，避免动画期间点到不该点的东西
+    submitBtn.disabled = false;
+    if (toggleTimerBtn) toggleTimerBtn.disabled = false;
+    startBtn.disabled = true;
+    timerDisplay.classList.add('timing-active');
+    header.classList.add('exam-in-progress');
+    if (versionWrap) versionWrap.classList.add('hide-during-exam');   // 考试期间隐藏版本切换，避免中途换年份
+
+    startTestingTimer(resumeEndTime);
+    enterExamFocusMode(isResume);   // 恢复时页面骨架瞬间收起，不播展开动画
+
+    submitBtn.style.display = 'inline-block';
+    questionsContainer.style.display = 'block';
+
+    if (isResume) {
+        // 恢复：所有东西直接就位，不播动画
+        startBtn.style.display = 'none';
+        return;
+    }
+
+    // 开考的过渡分成三段，错开一点而不是同时发生：
+    //   1. Start 按钮先淡出缩小（180ms）
+    //   2. 计时器同时从"时长说明"平滑变成倒计时
+    //   3. 题目延后 140ms 再淡入上移，等按钮先让开位置
+
+    // display 没法过渡，所以先加 class 播动画，播完再真正从版面里拿掉
+    startBtn.classList.add('is-leaving');
+    setTimeout(() => {
+        startBtn.style.display = 'none';
+        startBtn.classList.remove('is-leaving');
+    }, 200);
+
+    // 题目淡入。先移除再强制重排再加上，否则连续两次开考（Retake）时
+    // 动画不会重播
+    questionsContainer.classList.remove('exam-questions-enter');
+    void questionsContainer.offsetWidth;
+    questionsContainer.classList.add('exam-questions-enter');
+
+    // 播完把 class 去掉。动画里有 transform，而 animation-fill-mode 会让
+    // 最后一帧的 transform 永久留在元素上——任何非 none 的 transform 都会让
+    // 后代 position: fixed 相对它定位而不是相对视口，之前踩过这个坑
+    setTimeout(() => {
+        questionsContainer.classList.remove('exam-questions-enter');
+    }, 700);
+}
+
+// ---------- 考试会话的持久化 ----------
+// 刷新页面之后要能接着考，而不是从头开始。
+//
+// 存的是【结束时间戳】不是【剩余秒数】：
+// 时间戳是绝对的，刷新后直接跟 Date.now() 相减就得到剩余时间；
+// 存剩余秒数的话还得记录"存的那一刻是几点"，等于绕了一圈。
+//
+// 用 sessionStorage 不是 localStorage：
+// 关掉标签页就该结束这场考试，不该几天后打开还在倒计时。
+const EXAM_SESSION_KEY = 'code100_exam_session';
+
+function saveExamSession(paperId, endTime) {
+    try {
+        sessionStorage.setItem(EXAM_SESSION_KEY, JSON.stringify({
+            paperId: String(paperId),
+            endTime: endTime
+        }));
+    } catch (e) {
+        // 存不进去就算了，最多是刷新后要重新开始
+        console.warn('Failed to save exam session:', e);
+    }
+}
+
+function clearExamSession() {
+    try {
+        sessionStorage.removeItem(EXAM_SESSION_KEY);
+    } catch (e) { /* 忽略 */ }
+}
+
+// 有没有未结束的考试（不关心是哪一场）。
+// 页面初始化时用它决定落在哪个板块——那时候还没加载任何卷子，
+// 拿不到 paperId，所以不能用 readExamSession
+function hasUnfinishedExam() {
+    let raw;
+    try {
+        raw = JSON.parse(sessionStorage.getItem(EXAM_SESSION_KEY));
+    } catch (e) {
+        return false;
+    }
+    return !!(raw && raw.endTime && raw.endTime > Date.now());
+}
+
+// 读出未结束的考试。返回 null 表示没有可恢复的场次
+function readExamSession(paperId) {
+    let raw;
+    try {
+        raw = JSON.parse(sessionStorage.getItem(EXAM_SESSION_KEY));
+    } catch (e) {
+        return null;
+    }
+    if (!raw || !raw.endTime) return null;
+
+    // 必须是同一张卷子。换了 Test 或者换了年份就不该恢复——
+    // 那是另一场考试了
+    if (String(raw.paperId) !== String(paperId)) return null;
+
+    // 已经超时的场次不恢复。学生关着页面等到时间过完再打开，
+    // 不该看到一个负数的倒计时
+    if (raw.endTime <= Date.now()) {
+        clearExamSession();
+        return null;
+    }
+
+    return raw;
+}
+
+// ---------- 判分 ----------
+// 交卷后在浏览器里跑学生的代码，跟测试用例比对。
+// 引擎在 grading-engine.js（用 Pyodide 跑 Python）。
+//
+// ⚠️ 当前是验证阶段：
+//   - 超时保护不可靠，学生写死循环会卡死页面（要换 Web Worker）
+//   - 隐藏用例的输入在 Network 面板里看得见（浏览器端判分的固有限制）
+//   上线给学生用之前这两条都要处理。
+
+// 交卷后触发判分。没有测试用例的题会被跳过，不影响其他题
+function gradeExamAnswers(paperId) {
+    if (typeof gradeQuestion !== 'function') {
+        console.warn('Grading engine not loaded.');
+        setNoAutoScore('Auto-checking is unavailable right now.');
+        return;
+    }
+
+    // 成绩卡片先进入"计算中"状态。Pyodide 首次要下 3~4MB，
+    // 这段时间卡片上如果还挂着上一场的数字，会被当成本场的成绩
+    setPerformanceCardPending(true);
+
+    fetch(`${APP_API_BASE}/api/questions/papers/${paperId}/test-cases`)
+        .then(res => res.ok ? res.json() : null)
+        .then(caseMap => {
+            if (!caseMap || Object.keys(caseMap).length === 0) {
+                // 这张卷子一条测试用例都没录。这是【当前的常态】——
+                // 目前只有第 6 题有用例，其余卷子都会走到这里
+                setNoAutoScore('No questions on this paper are auto-checked yet.');
+                return;
+            }
+
+            const blocks = [...document.querySelectorAll('#testing-questions .question-block')];
+            const jobs = [];
+
+            blocks.forEach(block => {
+                const questionId = block.dataset.questionId;
+                const cases = caseMap[questionId];
+                if (!cases || cases.length === 0) return;   // 这道题没录用例，跳过
+
+                const textarea = block.querySelector('.answer-editor-input');
+                const code = textarea ? textarea.value : '';
+
+                // 每道题一个"判分中"的占位
+                const panel = document.createElement('div');
+                panel.className = 'grade-panel is-pending';
+                panel.innerHTML = `
+                    <span class="grade-spinner"></span>
+                    <span class="grade-pending-text">Checking your answer…</span>
+                `;
+                // 判分面板放在对照区【上面】：先看得分和哪条没过，
+                // 再往下逐行对照代码。
+                // ⚠️ 插入点从 .testing-answer 改成 .answer-compare——
+                // 标准答案现在包在对照容器里，不再是 block 的直接子元素，
+                // 用旧的选择器会插到容器【内部】，破坏并排布局
+                block.insertBefore(panel, block.querySelector('.answer-compare'));
+
+                jobs.push(
+                    gradeQuestion(code, cases)
+                        .then(result => {
+                            renderGradeResult(panel, result);
+                            return result;
+                        })
+                        .catch(error => {
+                            console.error('Grading failed:', error);
+                            panel.className = 'grade-panel is-error';
+                            panel.textContent = 'Could not check this answer.';
+                            return null;   // 这道题算不出来，不计入总分
+                        })
+                );
+            });
+
+            // 全部判完再算总分。
+            // 用 Promise.all 而不是逐题累加：逐题累加的话总分会一格一格往上跳，
+            // 而且中途的数字是没有意义的"半场比分"
+            return Promise.all(jobs).then(results => {
+                const valid = results.filter(r => r && !r.skipped);
+                if (valid.length === 0) {
+                    // 有用例，但没有一道题算出结果——通常是这几道题都没作答
+                    setNoAutoScore('Nothing to auto-check — none of the auto-checked questions were answered.');
+                    return;
+                }
+
+                // 按题平均。每道题权重相同——题内部的用例权重已经在
+                // gradeQuestion 里折算过了
+                const overall = Math.round(
+                    valid.reduce((sum, r) => sum + r.score, 0) / valid.length
+                );
+
+                applyRealScore(overall, valid.length);
+            });
+        })
+        .catch(error => {
+            console.error('Failed to load test cases:', error);
+            setNoAutoScore('Could not check your answers — please try again later.');
+        });
+}
+
+// 成绩卡片的"计算中"状态
+function setPerformanceCardPending(pending) {
+    const card = document.querySelector('.exam-analytics-card.is-primary');
+    if (card) card.classList.toggle('is-calculating', pending);
+}
+
+// 判不出分的时候，明确说出来。
+//
+// ⚠️ 这个函数是补一个真实存在的洞：以前判分走不下去时就直接 return，
+//    Your score 那一格保持 skeleton.html 里写死的初始值不动。
+//    那个初始值曾经是 "92%"，学生交完卷看到的就是它——
+//    一个凭空捏造的分数，长得跟真分数一模一样。
+//    现在静态值改成了 "—"，再加上这行说明，
+//    学生看到的是"这张卷子没有自动判分"而不是一个假成绩。
+function setNoAutoScore(message) {
+    setPerformanceCardPending(false);
+
+    const card = document.querySelector('.exam-analytics-card.is-primary');
+    if (!card) return;
+
+    let note = card.querySelector('.exam-score-note');
+    if (!note) {
+        note = document.createElement('p');
+        note.className = 'exam-score-note';
+        card.appendChild(note);
+    }
+    note.textContent = message;
+}
+
+// 把真实总分填进成绩卡片。
+//
+// ⚠️ 只有 Your score 是真的。同一张卡上的 Ranking 和 Class average
+// 仍然是编的——它们要跨用户数据，一个人考试算不出排名和班级平均。
+// 所以这两项加上 data-mock-value 标记，样式上压暗，
+// 免得学生以为整张卡都是自己的真实成绩
+function applyRealScore(score, gradedCount) {
+    setPerformanceCardPending(false);
+
+    const card = document.querySelector('.exam-analytics-card.is-primary');
+    if (!card) return;
+
+    card.classList.add('has-real-score');
+
+    // 第一个 .exam-stat 是 Your score
+    const scoreEl = card.querySelector('.exam-stat .exam-stat-value');
+    if (scoreEl) {
+        scoreEl.innerHTML = `${score}<span class="exam-stat-unit">%</span>`;
+    }
+
+    // 对比条里"You"那条也跟着走
+    const youFill = card.querySelector('.exam-compare-fill.is-you');
+    const youNum = card.querySelector('.exam-compare-row:first-child .exam-compare-num');
+    if (youFill) youFill.style.width = `${score}%`;
+    if (youNum) youNum.textContent = `${score}%`;
+
+    // 说明这个分数是怎么来的。不写的话学生不知道
+    // "为什么只算了 1 道题" —— 没录测试用例的题是不参与判分的
+    let note = card.querySelector('.exam-score-note');
+    if (!note) {
+        note = document.createElement('p');
+        note.className = 'exam-score-note';
+        card.appendChild(note);
+    }
+    note.textContent = gradedCount === 1
+        ? 'Based on 1 auto-checked question.'
+        : `Based on ${gradedCount} auto-checked questions.`;
+}
+
+// 把「考试用时」填进 Your performance 卡片的第三格。
+//
+// 那格原来是 Class average。换掉的理由不是嫌它不好看：
+// 班级平均要跨用户聚合，这个网站根本算不出来，那个数字一直是编的。
+// 而用时是实打实量出来的——开考时间戳到点交卷这一刻，
+// 中途刷新过也不影响（endTime 存在 sessionStorage 里，恢复时沿用）。
+// 拿一个真数字换掉一个假数字。
+//
+// ⚠️ 这里是【运行时改 DOM】，skeleton.html 里那一格的静态文案还写着
+//    Class average / 78%。两边要对上，否则以后只看 HTML 的人会误会。
+//    JS 万一没跑到，学生看到的就是那份写死的假数字
+function applyTimeSpentStat(totalElapsedSeconds) {
+    const card = document.querySelector('.exam-analytics-card.is-primary');
+    if (!card) return;
+
+    // 三格依次是 Your score / Ranking / Class average，要换的是最后一格
+    const stats = card.querySelectorAll('.exam-stat');
+    const target = stats[stats.length - 1];
+    if (!target) return;
+
+    const valueEl = target.querySelector('.exam-stat-value');
+    const labelEl = target.querySelector('.exam-stat-label');
+    if (!valueEl || !labelEl) return;
+
+    // 不到一分钟就按秒显示。四舍五入到分钟的话，
+    // 交卷特别快（比如只是来试一下）会显示 "0 min"，看着像坏了
+    const useSeconds = totalElapsedSeconds < 60;
+    const value = useSeconds
+        ? Math.max(0, totalElapsedSeconds)
+        : Math.round(totalElapsedSeconds / 60);
+
+    // 超时交卷会大于 110，不做上限截断——真花了多久就显示多久
+    valueEl.innerHTML = `${value}<span class="exam-stat-unit">${useSeconds ? 'sec' : 'min'}</span>`;
+    labelEl.textContent = 'Time spent';
+
+    // 这一格原来是 Class average，值上带着 exam-stat-muted（压暗，
+    // 表示"这不是你的数据"）。现在它是本人的真实用时，不该再压暗
+    valueEl.classList.remove('exam-stat-muted');
+
+    // 标记成真数据，CSS 据此跳过 " (sample)" 后缀和压暗
+    //
+    // ⚠️ 这里【不能】靠 removeAttribute('data-mock') 来防止 EXAM_ANALYTICS_MOCK
+    //    把它藏掉——那个属性挂在外层的 <section class="exam-analytics-card"> 上，
+    //    根本不在这一格上。真正的解法在 skeleton.html：
+    //    把 data-mock 从整张卡挪到卡里确实是假的那几块（Ranking、班级对比条），
+    //    否则关掉 mock 开关会连 Your score 和 Time spent 这两个真数字一起藏了
+    target.setAttribute('data-real-stat', 'true');
+}
+
+// 把判分结果画出来
+function renderGradeResult(panel, result) {
+    if (result.skipped) {
+        panel.remove();   // 没作答或没用例，不显示任何东西
+        return;
+    }
+
+    const passed = result.results.filter(r => r.passed).length;
+    const total = result.results.length;
+
+    panel.className = `grade-panel ${result.score === 100 ? 'is-full' : (result.score === 0 ? 'is-zero' : 'is-partial')}`;
+    panel.innerHTML = '';
+
+    const head = document.createElement('div');
+    head.className = 'grade-head';
+    head.innerHTML = `
+        <span class="grade-score">${result.score}<span>%</span></span>
+        <span class="grade-count">${passed} of ${total} checks passed</span>
+    `;
+    panel.appendChild(head);
+
+    const list = document.createElement('ul');
+    list.className = 'grade-case-list';
+
+    result.results.forEach(r => {
+        const li = document.createElement('li');
+        li.className = r.passed ? 'is-pass' : 'is-fail';
+
+        const icon = r.passed ? 'fa-circle-check' : 'fa-circle-xmark';
+        let html = `<i class="fa-solid ${icon}"></i><span>${escapeHtml(r.label || 'Check')}</span>`;
+
+        // 只有可见用例才展示输入和期望输出。
+        // 隐藏用例只说过没过——否则针对它们硬编码答案就行了
+        if (!r.passed && r.visible && r.expected) {
+            html += `<code class="grade-detail">expected ${escapeHtml(r.expected)}</code>`;
+        }
+        // 代码本身报错的话，错误信息对学生最有用，一定要显示
+        if (r.error) {
+            html += `<code class="grade-error">${escapeHtml(r.error)}</code>`;
+        }
+
+        li.innerHTML = html;
+        list.appendChild(li);
+    });
+
+    panel.appendChild(list);
+}
+
+// ---------- 答题 ----------
+// 每道题一个输入框。分开存是因为判分是按题算的，
+// 整张卷子一个大框的话没法对应到具体某道题。
+
+// 作答的本地缓存：paperId -> { questionId: text }
+// 后端存一份、本地也存一份。断网或者接口挂了的时候，
+// 本地这份至少能保住学生已经写的东西
+const EXAM_ANSWER_KEY_PREFIX = 'code100_exam_answers_';
+
+function examAnswerStorageKey(paperId) {
+    return `${EXAM_ANSWER_KEY_PREFIX}${paperId}`;
+}
+
+function readLocalAnswers(paperId) {
+    try {
+        return JSON.parse(localStorage.getItem(examAnswerStorageKey(paperId))) || {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function writeLocalAnswer(paperId, questionId, text) {
+    const all = readLocalAnswers(paperId);
+    all[questionId] = text;
+    try {
+        localStorage.setItem(examAnswerStorageKey(paperId), JSON.stringify(all));
+    } catch (e) {
+        // 存储满了之类的，静默失败——后端那份才是主的
+        console.warn('Failed to cache answer locally:', e);
+    }
+}
+
+// 把答题框的高度调整到刚好装下内容，但不超过上限。
+//
+// ⚠️ 上限是后加的。原来是【无上限】自动增高，当时的理由是
+//    "代码被塞在小框里滚动很难通读"。但交卷后是左右并排对照的布局，
+//    一份长答案会把左栏拉得很长，而右边标准答案本来就有 max-height，
+//    两栏高度差一大截，逐行对照的意义就没了。
+//    现在两边共用 CSS 里的 --answer-box-max-h，谁超了谁自己内部滚动。
+//
+// 上下限都从 CSS 读回来，不在这里写死数字：写死的话就有两个真相来源，
+// 而且窄屏的媒体查询要是改了这两个值，JS 这边完全不知道。
+// 每次都重新读而不是缓存，也是为了这个——布局会随窗口宽度变
+function autoGrowAnswerInput(textarea) {
+    if (!textarea) return;
+
+    // 先归零再量。不归零的话 scrollHeight 会被上一次设的高度顶住，
+    // 结果是内容删掉了框子也不会收回去，只增不减
+    textarea.style.height = 'auto';
+
+    const styles = getComputedStyle(textarea);
+    const maxHeight = parseFloat(styles.maxHeight);       // max-height: none 时是 NaN
+    const minHeight = parseFloat(styles.minHeight) || 0;
+
+    // scrollHeight 含 padding 但【不含 border】，而这个框是 border-box。
+    // 直接拿 scrollHeight 当 height 会少掉上下两条边框的高度，
+    // 表现是最后一行被切掉一点点，或者刚打完字就莫名闪出一条滚动条
+    const border = textarea.offsetHeight - textarea.clientHeight;
+
+    const wanted = Math.max(textarea.scrollHeight + border, minHeight);
+    const capped = Number.isFinite(maxHeight) && wanted > maxHeight;
+
+    textarea.style.height = `${capped ? maxHeight : wanted}px`;
+
+    // 只在顶到上限时才放出滚动条。没顶到的时候保持 hidden——
+    // 高度正好等于内容高度，用 auto 的话亚像素误差会让滚动条一闪一闪的
+    textarea.style.overflowY = capped ? 'auto' : 'hidden';
+}
+
+function buildAnswerEditor(questionId) {
+    const box = document.createElement('div');
+    box.className = 'answer-editor';
+
+    const label = document.createElement('label');
+    label.className = 'answer-editor-label';
+    label.textContent = 'Your answer';
+    label.setAttribute('for', `answer-${questionId}`);
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'answer-editor-input';
+    textarea.id = `answer-${questionId}`;
+    textarea.dataset.questionId = questionId;
+    textarea.spellcheck = false;
+    textarea.placeholder = 'Write your code here...';
+    // 关掉浏览器的自动纠正——写代码时它会把引号换成弯引号、首字母大写
+    textarea.autocapitalize = 'off';
+    textarea.autocomplete = 'off';
+    textarea.setAttribute('autocorrect', 'off');
+
+    // Tab 键插入缩进而不是跳到下一个控件。
+    // 写 Python 不能缩进的话这个框根本没法用
+    textarea.addEventListener('keydown', (e) => {
+        if (e.key !== 'Tab') return;
+        e.preventDefault();
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const INDENT = '    ';   // Python 惯例是 4 个空格
+
+        textarea.value = textarea.value.slice(0, start) + INDENT + textarea.value.slice(end);
+        textarea.selectionStart = textarea.selectionEnd = start + INDENT.length;
+
+        textarea.dispatchEvent(new Event('input'));
+    });
+
+    // 随内容自动增高，到 --answer-box-max-h 为止，再长就内部滚动。
+    // 具体的取舍见 autoGrowAnswerInput 上面的注释
+    textarea.addEventListener('input', () => autoGrowAnswerInput(textarea));
+
+    // 自动保存。防抖 800ms——每敲一个字就发一次请求会打爆后端，
+    // 而且没有意义：中途的半截代码存下来也没用
+    let saveTimer = null;
+    textarea.addEventListener('input', () => {
+        const paperId = document.getElementById('testing-header')?.dataset.currentPaperId;
+        if (!paperId) return;
+
+        // 本地那份【立刻】写，不等防抖。
+        // 学生手一抖关了标签页，最后 800ms 内敲的东西也不该丢
+        writeLocalAnswer(paperId, questionId, textarea.value);
+
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            saveAnswerToServer(paperId, questionId, textarea.value);
+        }, 800);
+    });
+
+    // 失焦时立刻存一次，不等防抖。
+    // 学生切走去看别的题时，这一题的内容应该已经落库了
+    textarea.addEventListener('blur', () => {
+        const paperId = document.getElementById('testing-header')?.dataset.currentPaperId;
+        if (!paperId) return;
+
+        clearTimeout(saveTimer);
+        saveAnswerToServer(paperId, questionId, textarea.value);
+    });
+
+    box.appendChild(label);
+    box.appendChild(textarea);
+    return box;
+}
+
+// 清掉一张卷子的全部作答：输入框、本地缓存、后端那份，三处都要清。
+//
+// 只清其中一处会留下不一致：
+//   - 只清输入框 → 刷新之后 restoreSavedAnswers 又把旧内容填回来了
+//   - 只清本地 → 换个设备打开还是能看到上次的
+//   - 只清后端 → 本地缓存还在，同一个浏览器里照样看得到
+function clearAllAnswers(paperId) {
+    if (!paperId) return;
+
+    // 1. 输入框
+    document.querySelectorAll('#testing-questions .answer-editor-input').forEach(el => {
+        el.value = '';
+        el.readOnly = false;   // 上一场交卷时设成了只读，重考要能写
+        el.style.height = '';  // 高度是随内容撑起来的，清空后要收回去
+
+        // 上一场如果写满过、顶到了上限，autoGrowAnswerInput 会在元素上
+        // 留一条 inline 的 overflow-y: auto。不清掉的话重考时空框子
+        // 也挂着滚动条的样式
+        el.style.overflowY = '';
+    });
+
+    // 2. 本地缓存
+    try {
+        localStorage.removeItem(examAnswerStorageKey(paperId));
+    } catch (e) { /* 清不掉就算了，下面后端那份是主的 */ }
+
+    // 3. 后端。逐题发空字符串——后端接口是「按题保存」，
+    //    没有批量删除的接口，为这一处专门加一个不划算
+    const token = getToken();
+    if (!token) return;
+
+    document.querySelectorAll('#testing-questions .answer-editor-input').forEach(el => {
+        saveAnswerToServer(paperId, el.dataset.questionId, '');
+    });
+}
+
+// 交卷时把所有作答再提交一遍。
+// 逐条发而不是打包成一个请求：后端已经有单题接口了，
+// 再加一个批量接口只为这一处调用不划算
+function flushAllAnswers(paperId) {
+    if (!paperId) return;
+
+    document.querySelectorAll('#testing-questions .answer-editor-input').forEach(el => {
+        saveAnswerToServer(paperId, el.dataset.questionId, el.value);
+    });
+}
+
+// 把一道题的作答发给后端。
+// 失败不打断考试——本地缓存那份还在，交卷时会再整体提交一次
+function saveAnswerToServer(paperId, questionId, text) {
+    const token = getToken();
+    if (!token) return;
+
+    fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/answers/${questionId}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer: text })
+    }).catch(error => console.error('Failed to save answer:', error));
+}
+
+// 把已保存的作答填回输入框。
+// 先用本地缓存立刻填上（不用等网络），再拉后端那份覆盖——
+// 换了设备或者清过缓存的时候，后端那份才是唯一的来源
+function restoreSavedAnswers(paperId) {
+    const fill = (map) => {
+        document.querySelectorAll('#testing-questions .answer-editor-input').forEach(el => {
+            const saved = map[el.dataset.questionId];
+            if (saved === undefined || saved === null || saved === '') return;
+
+            el.value = saved;
+
+            // ⚠️ 这里原来自己抄了一份撑高的算法。现在统一走
+            // autoGrowAnswerInput——刷新恢复出来的长答案也要受同一个上限管，
+            // 两份实现迟早会改歪一边
+            autoGrowAnswerInput(el);
+        });
+    };
+
+    fill(readLocalAnswers(paperId));
+
+    const token = getToken();
+    if (!token) return;
+
+    fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/answers`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+            if (!data) return;
+            fill(data);
+
+            // 顺手把后端那份同步到本地，下次刷新不用等网络
+            try {
+                localStorage.setItem(examAnswerStorageKey(paperId), JSON.stringify(data));
+            } catch (e) { /* 存储满了就算了，后端那份是主的 */ }
+        })
+        .catch(error => console.error('Failed to load saved answers:', error));
 }
 
 // 侧边小提示条（替代浏览器原生 alert），不需要点确认，3秒后自动消失
@@ -865,15 +1850,31 @@ function checkCountdownWarning(remainingSeconds) {
 }
 
 // 启动 Testing 倒计时：从 COUNTDOWN_TOTAL_SECONDS 开始往下计，归零后不停止，继续往上计显示超时时长
-function startTestingTimer() {
+// resumeEndTime 有值时表示「从刷新中恢复」，直接沿用原来的结束时间；
+// 不传就是一场新考试，从现在起算满 110 分钟
+function startTestingTimer(resumeEndTime = null) {
     stopTestingTimer();
-    warned10 = false;
-    warned5 = false;
-    warned1 = false;
-    warnedTimesUp = false;
 
-    countdownEndTime = Date.now() + COUNTDOWN_TOTAL_SECONDS * 1000;
-    renderTimerDisplay(COUNTDOWN_TOTAL_SECONDS);
+    // 恢复时不重置这些提醒标记会有个问题：如果刷新前已经提醒过「还剩 10 分钟」，
+    // 重置之后会再提醒一次。但反过来，不重置的话新开一场考试又不会提醒。
+    // 这里按「恢复时保留、新考试时重置」处理
+    if (!resumeEndTime) {
+        warned10 = false;
+        warned5 = false;
+        warned1 = false;
+        warnedTimesUp = false;
+    }
+
+    countdownEndTime = resumeEndTime || (Date.now() + COUNTDOWN_TOTAL_SECONDS * 1000);
+    renderTimerDisplay(Math.round((countdownEndTime - Date.now()) / 1000));
+
+    // 存下来，刷新页面之后能接着考。
+    // 恢复的场次也要重存一次——不然 sessionStorage 里那条不会被刷新，
+    // 虽然值一样，但逻辑上「当前正在考的是哪一场」应该始终由这里维护
+    const headerEl = document.getElementById('testing-header');
+    if (headerEl && headerEl.dataset.currentPaperId) {
+        saveExamSession(headerEl.dataset.currentPaperId, countdownEndTime);
+    }
 
     testingTimerInterval = setInterval(() => {
         const remainingSeconds = Math.round((countdownEndTime - Date.now()) / 1000);

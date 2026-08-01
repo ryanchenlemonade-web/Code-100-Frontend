@@ -41,6 +41,12 @@ body{
     gap: 6px;
     padding-top: 24px;
     margin-bottom: 18px;
+    /* 沉浸模式要平滑收起，不是瞬间消失。
+       max-height 得有个初始值，否则 0 到 auto 之间没法过渡 */
+    overflow: hidden;
+    max-height: 300px;
+    transition: opacity 0.32s ease, max-height 0.35s ease,
+                padding 0.35s ease, margin 0.35s ease;
 }
 
 .title-row {
@@ -202,6 +208,7 @@ body{
     border-radius: 0;
     box-shadow: none;
     max-height: 80px;
+    overflow: hidden;
     transition: opacity 0.28s ease, transform 0.28s ease, margin 0.28s ease,
                 padding 0.28s ease, max-height 0.28s ease;
 }
@@ -351,6 +358,7 @@ body{
     flex: 1;
     min-width: 0;          /* flex 子项默认不会小于内容宽度，不加这行长内容会把布局撑破 */
     padding: 0 36px 0 52px;
+    transition: padding-top 0.35s ease;
 
     animation: contentFadeIn 0.9s ease forwards;
 }
@@ -381,10 +389,112 @@ body{
 }
 
 
+/* ---------- 沉浸模式 ---------- */
+/* 把跟题目无关的东西全部平滑收起：页头、导航栏、板块切换器、页脚。
+   用 max-height 一起收（而不是只有 opacity），是为了让下面的内容往上补位，
+   否则会留下一大块空白。
+   
+   这套 class 跟考试专注模式（.exam-focus-hide）是独立的两套，
+   同时生效也没问题——两者都是"收起"，取并集就是收起。 */
+body.immersive-mode #header-wrapper,
+body.immersive-mode .nav-bar,
+body.immersive-mode .section-switcher,
+body.immersive-mode #footer-container {
+    opacity: 0;
+    max-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    pointer-events: none;
+}
+
+/* 上面的东西都收了，但顶部得留出足够的呼吸空间。
+   注意开关按钮是 position: fixed（top: 14px、高 34px），【不占版面空间】，
+   所以这里留白不够的话内容会跟按钮挤在一起。
+   44px 刚好让第一行内容落在按钮下方 */
+body.immersive-mode .content {
+    padding-top: 44px;
+}
+
+/* 开关按钮：fixed 定位，沉浸模式下页面别的东西都收起了，
+   它必须留在外面，否则进去就出不来。
+   z-index 要压过导航栏（100）和 Cribsheet 里的浮动工具条 */
+.immersive-toggle {
+    position: fixed;
+    top: 14px;
+    right: 18px;
+    z-index: 200;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid hsla(220, 20%, 86%, 0.9);
+    border-radius: 999px;
+    background: hsla(0, 0%, 100%, 0.88);
+    color: hsl(220, 10%, 45%);
+    cursor: pointer;
+    font-size: 0.8rem;
+    box-shadow: 0 1px 3px hsla(220, 30%, 25%, 0.1);
+    transition: background-color 0.15s ease, color 0.15s ease,
+                border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.immersive-toggle:hover {
+    background: #ffffff;
+    border-color: hsla(220, 20%, 70%, 0.9);
+    color: hsl(220, 22%, 18%);
+    box-shadow: 0 3px 10px hsla(220, 30%, 25%, 0.16);
+}
+
+.immersive-toggle:active {
+    transform: scale(0.94);
+}
+
+/* 打印时不需要这个按钮 */
+@media print {
+    .immersive-toggle {
+        display: none !important;
+    }
+}
+
+/* 跳过过渡。交卷时给页面骨架临时加上，让它瞬间恢复而不是慢慢展开。
+   !important 是必要的：这几个元素各自的 transition 写在自己的规则里，
+   优先级跟这条一样，不加就盖不过去 */
+.skip-transition {
+    transition: none !important;
+}
+
+/* 准备阶段（点了 Get Ready 之后）和考试期间收起的东西是同一批：
+   页头、板块切换器、导航栏、页脚。
+   
+   但不能直接复用 .exam-focus-hide 这个 class：那是
+   enterExamFocusMode() 加上的，而那个函数只在【真正开考】时才调。
+   准备阶段是独立的一步，所以每条规则都加一个 body.exam-ready-mode 的变体，
+   两套状态互不干扰。
+   
+   下面几条规则的选择器都是成对的，改一条记得看看要不要改另一条。 */
+
+/* 考试期间把页头也收起来。
+   #header-wrapper 上已经有 overflow / max-height / transition
+   （沉浸模式那边加的），这里只要把值收成 0 就能平滑收起 */
+#header-wrapper.exam-focus-hide,
+body.exam-ready-mode #header-wrapper {
+    opacity: 0;
+    max-height: 0 !important;
+    padding-top: 0 !important;
+    margin-bottom: 0 !important;
+    pointer-events: none;
+}
+
 /* 考试专注模式：切换器和 navbar 平滑收起，而不是瞬间消失
    （由 testing-engine.js 里的 enterExamFocusMode / exitExamFocusMode 触发） */
 
-.section-switcher.exam-focus-hide {
+.section-switcher.exam-focus-hide,
+body.exam-ready-mode .section-switcher {
     opacity: 0;
     transform: translateY(-10px);
     max-height: 0;
@@ -402,7 +512,8 @@ body{
     transition: opacity 0.4s ease, transform 0.4s ease, max-height 0.4s ease, padding 0.4s ease;
 }
 
-.nav-bar.exam-focus-hide {
+.nav-bar.exam-focus-hide,
+body.exam-ready-mode .nav-bar {
     opacity: 0;
     transform: translateY(-12px);
     max-height: 0;
@@ -421,11 +532,28 @@ body{
     transition: opacity 0.6s ease, max-height 0.4s ease;
 }
 
+/* 页脚是次要信息，不该跟内容抢注意力：字号收小、整体压暗一档 */
 #footer-container.footer-loaded {
+    opacity: 0.72;
+}
+
+#footer-container {
+    font-size: 0.82rem;
+}
+
+#footer-container:hover {
     opacity: 1;
 }
 
-#footer-container.exam-focus-hide {
+/* 页脚在两种情况下收起：
+   - 准备阶段（body.exam-ready-mode）：点了 Get Ready 之后，
+     页面上只该剩考卷卡片和说明
+   - 考试期间（.exam-focus-hide，由 enterExamFocusMode 加上）
+   
+   准备阶段用 body class 而不是 .exam-focus-hide，是因为
+   enterExamFocusMode 只在真正开考时才调——两个阶段要分开控制 */
+#footer-container.exam-focus-hide,
+body.exam-ready-mode #footer-container {
     opacity: 0;
     max-height: 0;
     pointer-events: none;
