@@ -246,6 +246,14 @@
         <!-- 题目由 JS 动态插入在这里 -->
     </div>
 
+    <!-- ⚠️ 题目导航条【不在这里】，它在 cs1_index.html 的 body 直属层。
+         原因：#testing-content 和 #content-container 在切板块的过渡里
+         被写过 transform，动画停下后计算值是 matrix(1,0,0,1,0,0)——
+         一个"零位移的 transform"。视觉上等于没做任何事，
+         但对 position: fixed 来说照样建立包含块，
+         导航条就变成相对这个容器定位、跟着内容一起滚了。
+         这个坑在 DevTools 里也不显眼，因为 transform 值看起来是"没动" -->
+
     <button id="testing-submit-btn" disabled style="display: none;">All Done!!</button>
 
     <button id="testing-back-to-top-btn" style="display: none;">↑ Back to Top</button>

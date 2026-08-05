@@ -290,6 +290,353 @@
     opacity: 0.7;
 }
 
+/* 点进来才能滚。.is-capped 由 autoGrowAnswerInput 在内容顶到上限时加上，
+   两个条件缺一不可：没超出的框子不需要滚，没聚焦的框子不该抢滚轮 */
+.answer-editor-input.is-capped:focus {
+    overflow-y: auto;
+}
+
+/* 聚焦时的阴影效果写在 .answer-editor-input:focus 那一处（本文件靠后），
+   不在这里重复——同选择器写两遍的话后面那条会整个盖掉前面的 */
+
+/* 标准答案：同样点进来才能滚。
+   靠 tabIndex=0（在 revealSolutions 里加的）让 <pre> 能被聚焦，
+   不然 :focus 永远不会命中 */
+.answer-solution-box .testing-answer {
+    overflow: hidden;
+    cursor: pointer;
+    transition: box-shadow 0.15s ease;
+}
+
+.answer-solution-box .testing-answer:focus {
+    outline: none;
+    overflow: auto;
+    cursor: auto;
+    box-shadow: 0 6px 20px hsla(220, 30%, 35%, 0.16),
+                0 2px 6px hsla(220, 30%, 35%, 0.1);
+}
+
+/* 内容超出时底部渐隐，暗示"下面还有"。
+   .is-scrollable 由 JS 量过之后才加——内容没超出还画一道渐变的话，
+   底部会凭空多一块看不出所以然的阴影。
+   聚焦之后（也就是可以滚了）渐隐消失，否则它会一直挡着最后一行 */
+.answer-solution-box {
+    position: relative;
+}
+
+.answer-solution-box.is-scrollable::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 52px;
+    border-radius: 0 0 10px 10px;
+    background: linear-gradient(to bottom, hsla(120, 30%, 96%, 0), var(--answer-bg));
+    pointer-events: none;   /* 别挡住点击，否则点渐隐区聚焦不了 */
+    opacity: 1;
+    transition: opacity 0.15s ease;
+}
+
+.answer-solution-box:focus-within::after {
+    opacity: 0;
+}
+
+/* ---------- 题目导航条 ---------- */
+/* 常规样式：右侧一块浮动面板，里面是一格一格的题号按钮。
+   容器写在 cs1_index.html 的 body 直属层，按钮由 buildQuestionNav() 填。
+
+   ⚠️ 容器【必须】在 body 直属层，不能挪进 #testing-content。
+   那两层容器（#testing-content / #content-container）在切板块的
+   过渡里被写过 transform，动画停下后计算值是 matrix(1,0,0,1,0,0)——
+   一个"零位移的 transform"。视觉上等于什么都没做，
+   但对 position: fixed 来说照样建立包含块，
+   面板会变成相对那个容器定位、跟着页面内容一起滚。 */
+
+/* ⚠️ 这条必须写。HTML 上的 hidden 属性靠的是浏览器默认样式表里的
+   [hidden] { display: none }，作者样式里任何一句 display 都会盖过它——
+   元素会变成"看不见但占着位置"。
+   靠的是【特异性】不是顺序：.exam-question-nav[hidden] 多一个
+   属性选择器，写在前面写在后面都赢 */
+.exam-question-nav[hidden] {
+    display: none;
+}
+
+.exam-question-nav {
+    position: fixed;
+
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 150;
+
+    /* 单列竖排。面板很窄（58px），占的横向空间比四列网格少得多。
+       代价是题一多就长：20 道题要 780px，撑破 70vh 之后
+       面板内部滚动——那时候得先滚面板才能点到后面的题 */
+    display: grid;
+    grid-template-columns: 32px;
+    gap: 6px;
+
+    /* 题特别多时面板自己滚，不要长到超出屏幕 */
+    max-height: 70vh;
+    overflow-y: auto;
+
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid hsl(220, 12%, 88%);
+    background: #fff;
+    box-shadow: 0 4px 20px hsla(220, 15%, 30%, 0.1);
+}
+
+.exam-nav-item {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid hsl(220, 10%, 88%);
+    border-radius: 8px;
+    background: #fff;
+    color: hsl(220, 10%, 45%);
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease,
+                border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.exam-nav-item:hover {
+    border-color: hsl(220, 10%, 70%);
+    box-shadow: 0 2px 8px hsla(220, 12%, 30%, 0.16);
+}
+
+/* 已作答：浅绿。
+   ⚠️ 只表示"写了东西"，不表示"写对了"——判分是另一回事。
+   所以是填个底色，不打勾：打勾会被读成"这题做对了" */
+.exam-nav-item.is-answered {
+    background: hsl(145, 45%, 90%);
+    border-color: hsl(145, 35%, 78%);
+    color: hsl(145, 40%, 26%);
+}
+
+/* 已标记：浅红。
+   ⚠️ 这条【必须写在 .is-answered 后面】——一道题可能既写了答案
+   又被标记，两条规则特异性一样，靠顺序决定谁赢。
+   这时候该显示红：学生更需要知道"这题我要回来改"，
+   而不是"这题写了"。写反了的话标记就等于白标 */
+.exam-nav-item.is-flagged {
+    background: hsl(0, 70%, 93%);
+    border-color: hsl(0, 55%, 82%);
+    color: hsl(0, 50%, 34%);
+}
+
+/* 当前滚到的那道题。
+   ⚠️ 写在最后，所以盖过绿和红——当前位置比"做没做/标没标"更要紧，
+   而且它只有一个，不会把整片颜色都吃掉 */
+.exam-nav-item.is-current {
+    background: hsl(220, 12%, 38%);
+    border-color: hsl(220, 12%, 38%);
+    color: #fff;
+}
+
+.exam-nav-item:focus-visible {
+    outline: 2px solid hsl(220, 12%, 38%);
+    outline-offset: 2px;
+}
+
+/* 给面板腾地方。
+   它是 position: fixed，浮在内容【上面】、自己不占位——
+   不留边距的话就直接压在代码和答题框上。
+
+   ⚠️ 条件是 body.has-question-nav，【不是】媒体查询。
+   这个类由 buildQuestionNav() / destroyQuestionNav() 开关，
+   所以"有没有留边距"跟"面板在不在"永远一致。
+   用媒体查询判断的话，它跟面板的显示条件各判各的，
+   视口一掉到断点以下就会出现"边距没了但面板还在"这种错位。
+
+   ⚠️ 【分两处写，不要统一加在 #testing-content 上】。
+   加在 #testing-content 上的话，题目区会跟着一起被推——
+   而题目区本来的位置是调好的，不该因为右边多了个面板就整体挪动。
+
+   114px = 28（面板离右边缘）+ 58（面板宽：32 按钮 + 12×2 内边距 + 1×2 边框）
+   + 28（内容和面板之间的呼吸空间）。
+   ⚠️ 改了 right、按钮尺寸、padding 里的任何一个，下面两个数都要跟着重算 */
+
+/* 题目区：右边收窄，给面板让出位置。
+   ⚠️ 只加右边，左边不动——加了左内边距题目会往右挪，
+   跟上面的卡片就对不齐了 */
+body.has-question-nav #testing-questions {
+    padding-right: 114px;
+}
+
+/* 卡片区（考卷卡片、说明、四块分析）：它们是
+   max-width: 980px + margin auto 居中的，所以【不能加内边距】——
+   加了会把居中轴推偏，整片卡片看起来贴着一边。
+
+   改成压一下最大宽度：两侧各留 114px，居中不受影响。
+   114 = 28（面板离右缘）+ 58（面板宽）+ 28（呼吸空间）。
+   宽屏上 980px 这一档先到，等于什么都没发生；
+   只有窄到卡片快碰到面板时才生效 */
+body.has-question-nav .exam-layout,
+body.has-question-nav .exam-version-row {
+    max-width: min(980px, calc(100% - 228px));
+}
+
+/* 窄屏放不下就不显示。
+   ⚠️ 断点是 760px：竖排面板只要 58px，比四列网格窄得多，
+   所以断点也可以低一些 */
+@media (max-width: 760px) {
+    .exam-question-nav {
+        display: none;
+    }
+
+    body.has-question-nav #testing-questions {
+        padding-right: 0;
+    }
+
+    body.has-question-nav .exam-layout,
+    body.has-question-nav .exam-version-row {
+        max-width: 980px;
+    }
+}
+
+/* 「标记」按钮。跟在题号后面，所以要小、要低调——
+   它是备用功能，不该跟题号抢注意力 */
+.exam-flag-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid hsl(220, 12%, 88%);
+    border-radius: 999px;
+    background: #fff;
+    color: hsl(220, 10%, 50%);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease,
+                border-color 0.15s ease;
+}
+
+.exam-flag-btn:hover {
+    border-color: hsl(0, 55%, 78%);
+    color: hsl(0, 50%, 45%);
+}
+
+/* 标记上了：跟导航面板里那格用同一套红，
+   两处颜色对不上的话，学生要多想一步才能把它们联系起来 */
+.exam-flag-btn.is-flagged {
+    background: hsl(0, 70%, 95%);
+    border-color: hsl(0, 55%, 80%);
+    color: hsl(0, 55%, 40%);
+}
+
+/* 交卷后答题框变成只读，标记也就没意义了 */
+body.exam-result-mode .exam-flag-btn {
+    display: none;
+}
+
+/* 从导航跳过去时留出顶部空间，
+   否则题目会被顶部的 Test 分类导航栏压住 */
+#testing-questions .question-block {
+    scroll-margin-top: 88px;
+}
+
+/* ---------- 学生自评 ---------- */
+/* 大题（half-program / full-program）自动判不了，交卷后摊开标准答案和
+   减分条件让学生自己打分。这一块放在对照区【下面】——
+   先看自己写的、再看标准答案，最后才打分，顺序跟人实际改卷子一样 */
+.self-assess-box {
+    margin: 4px 0 18px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    /* 用虚线边框跟上面的判分面板（实线）区分开：
+       那个是机器判的，这个是自己填的，视觉上不该长得一样 */
+    border: 1px dashed hsla(220, 20%, 78%, 0.9);
+    background: hsl(45, 60%, 98%);
+}
+
+.self-assess-heading {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: hsl(220, 15%, 35%);
+    margin-bottom: 8px;
+}
+
+/* 减分条件是老师录的多行文本，保留换行；
+   用等宽字体之外的字体——它是说明不是代码 */
+.self-assess-rubric {
+    white-space: pre-wrap;
+    font-size: 0.82rem;
+    line-height: 1.55;
+    color: hsl(220, 12%, 40%);
+    margin-bottom: 12px;
+}
+
+/* 缺分值 / 缺减分条件时的说明。要看得见但不抢眼——
+   它说的是"数据还没录"，是给使用者的提示，不是错误 */
+.self-assess-missing {
+    margin: 0 0 10px;
+    font-size: 0.76rem;
+    color: hsl(220, 10%, 55%);
+    font-style: italic;
+}
+
+.self-assess-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.self-assess-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: hsl(220, 15%, 35%);
+}
+
+.self-assess-input {
+    width: 72px;
+    padding: 6px 10px;
+    font-size: 0.9rem;
+    text-align: center;
+    border-radius: 8px;
+    border: 1px solid hsla(220, 20%, 80%, 0.9);
+    background: #fff;
+    color: hsl(220, 15%, 25%);
+}
+
+.self-assess-input:focus {
+    outline: none;
+    border-color: hsl(210, 70%, 60%);
+    box-shadow: 0 0 0 3px hsla(210, 70%, 60%, 0.15);
+}
+
+.self-assess-outof {
+    font-weight: 500;
+    color: hsl(220, 10%, 50%);
+}
+
+/* 自评总分。跟 .exam-score-note（自动判分的说明）并列显示，
+   ⚠️ 两者【不合并】：一个是测试用例跑出来的，一个是学生自己填的，
+   加在一起得到的数字没有任何一句话能准确描述它是什么 */
+.exam-self-score {
+    margin: 6px 0 0;
+    font-size: 0.74rem;
+    color: hsl(220, 10%, 55%);
+}
+
+/* 标准答案拉取失败时的提示 */
+.solutions-error {
+    margin: 0 0 16px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: hsl(0, 70%, 97%);
+    color: hsl(0, 45%, 45%);
+    font-size: 0.82rem;
+}
+
 /* ---------- 判分结果 ---------- */
 /* 显示在学生答案和标准答案之间——先看自己错在哪，再看正确写法 */
 .grade-panel {
@@ -429,11 +776,109 @@ body.exam-result-mode .answer-compare {
     grid-template-columns: 1fr 1fr;
 }
 
+/* 两栏之间的拖动条。
+   
+   三列布局：左栏 | 拖动条 | 右栏。
+   --answer-split 是左栏占的百分比，由 JS 在拖动时改，默认 50%。
+   右栏用 1fr 吃掉剩下的，所以【总宽度不变】——
+   左边多一点右边就少一点，整体不会变宽也不会换行。
+   
+   ⚠️ 两侧都写 minmax(0, ...)：grid 子项的默认最小尺寸是 auto，
+   也就是"不能小于内容"。里面是代码块，一行长代码就能顶住不让缩，
+   拖动会卡住不动。写 0 才能真正拖到小 */
+body.exam-result-mode .answer-compare.has-split {
+    grid-template-columns: minmax(0, var(--answer-split, 50%))
+                           auto
+                           minmax(0, 1fr);
+    /* gap 归零：栏间距由拖动条自己的宽度和内边距提供，
+       再留 gap 的话两栏中间会空出一大块 */
+    gap: 0;
+}
+
+.answer-split-handle {
+    /* 只在纵向撑满自己这一格，不影响两侧高度——
+       align-items: start 是父级设的，这里要单独拉满 */
+    align-self: stretch;
+
+    /* 顶上让出标签那一行，让线从【框的顶边】开始，
+       而不是从 "YOUR ANSWER" / "MODEL ANSWER" 那一行开始。
+       
+       ⚠️ 用 margin-top 不是 padding-top。
+       padding 的做法要靠 ::before 的 height: 100% 去解析父级的内容盒高度，
+       在 flex 容器里这个百分比不一定按预期解析，线还是会顶到最上面。
+       margin 配合 align-self: stretch 直接把盒子本身的顶边压下去，
+       ::before 撑多高都跟着走。
+       
+       26px ≈ 标签字号 0.72rem 那一行的高度 + margin-bottom 7px。
+       ⚠️ 改了 .answer-editor-label 的字号或下边距，这个数要跟着调 */
+    margin-top: 26px;
+
+    width: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    cursor: col-resize;
+    /* 拖动时浏览器会去选中两侧的文字，选中之后指针一动整片就高亮了。
+       touch-action 是给触屏的：不写的话按住拖会变成滚页面 */
+    user-select: none;
+    touch-action: none;
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+/* 中间那根线。默认很淡，鼠标靠近才明显——
+   它平时不该跟代码抢注意力 */
+.answer-split-handle::before {
+    content: '';
+    width: 2px;
+    height: 100%;
+    min-height: 40px;
+    border-radius: 999px;
+    background: hsl(220, 12%, 88%);
+    transition: background 0.15s ease, width 0.15s ease;
+}
+
+.answer-split-handle:hover::before,
+.answer-split-handle:focus-visible::before,
+.answer-split-handle.is-dragging::before {
+    width: 4px;
+    background: hsl(220, 12%, 62%);
+}
+
+.answer-split-handle:focus-visible {
+    outline: none;
+}
+
+/* 拖动过程中给整页加的类。
+   ⚠️ 没有这个的话，指针一旦移出拖动条（拖快了必然移出），
+   光标会变回箭头、而且两侧的文字会被选中，看起来像拖断了 */
+body.is-splitting,
+body.is-splitting * {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
 /* 窄屏堆叠回上下排列。
    两边各减半之后，代码行会频繁折行，反而比上下排更难读 */
 @media (max-width: 900px) {
     body.exam-result-mode .answer-compare {
         grid-template-columns: 1fr;
+    }
+
+    /* 单栏堆叠时拖动条没有意义——它调的是左右比例，
+       而这时候两栏是上下排的。
+       ⚠️ .has-split 那条的特异性更高（多一个 class），
+       所以必须在这里【显式】写一遍把它压回单列，
+       只写上面那条压不住 */
+    body.exam-result-mode .answer-compare.has-split {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .answer-split-handle {
+        display: none;
     }
 }
 
@@ -446,10 +891,14 @@ body.exam-result-mode .answer-compare {
    
    上限跟左边的答题框共用 --answer-box-max-h（定义在 .answer-compare 上）——
    以前这里写死 520px，而左边是无上限自动增高的，
-   结果一份长答案会让左栏比右栏高出一大截，并排对照的意义就没了 */
+   结果一份长答案会让左栏比右栏高出一大截，并排对照的意义就没了。
+   
+   ⚠️ 这里【不要】再写 overflow。滚不滚由上面那组
+   "点进来才能滚" 的规则控制（默认 hidden，:focus 时 auto）。
+   在这里补一句 overflow: auto 的话，因为它排在后面、
+   优先级又一样，会直接把那套逻辑盖掉 */
 .answer-solution-box .testing-answer {
     max-height: var(--answer-box-max-h);
-    overflow: auto;
     margin: 0;
 }
 
@@ -491,20 +940,33 @@ body.exam-result-mode .answer-compare {
     color: hsl(220, 28%, 18%);
     tab-size: 4;
     resize: none;
-    /* 默认不出滚动条：高度是跟着内容走的，正好装得下。
-       只有内容超过 max-height、框子被卡住的时候，
-       autoGrowAnswerInput 才会把 overflow-y 临时改成 auto */
+    /* 【没点进来之前不给滚】。内容超出上限时 JS 会加 .is-capped，
+       但真正放出滚动条的是下面那条 :focus 规则。
+       这样鼠标划过答题框时滚轮还是滚页面，
+       不会出现"鼠标经过某块地方整页就不动了"的情况 */
     overflow: hidden;
     box-sizing: border-box;
+    /* ⚠️ transition 只写这一条。同一个属性写两次的话，
+       后面那条会把前面整条【整个】盖掉（不是合并），
+       结果是先写的那些过渡全部失效 */
     transition: border-color 0.15s ease, background-color 0.15s ease,
                 box-shadow 0.15s ease;
 }
 
+/* 聚焦时的效果是【阴影】，把这一栏抬起来一点。
+   ⚠️ 原来这里是 border-color + 0 0 0 3px 的零模糊扩散——
+   那两个看起来都是"描了一圈边"，不是阴影。
+   现在换成有模糊、有垂直偏移的投影，视觉上是浮起来。
+   
+   ⚠️ 【聚焦的样式只写这一处】。以前下面还有一条同名规则，
+   排在后面会把这条整个盖掉——CSS 同选择器同属性是后者胜，不是合并。
+   标准答案那栏用的是同一套阴影值（见 .testing-answer:focus），
+   两栏交卷后并排显示，长得不一样会像两种不同的控件 */
 .answer-editor-input:focus {
     outline: none;
-    border-color: hsl(214, 70%, 68%);
     background: #ffffff;
-    box-shadow: 0 0 0 3px hsla(214, 84%, 60%, 0.12);
+    box-shadow: 0 6px 20px hsla(220, 30%, 35%, 0.16),
+                0 2px 6px hsla(220, 30%, 35%, 0.1);
 }
 
 .answer-editor-input::placeholder {

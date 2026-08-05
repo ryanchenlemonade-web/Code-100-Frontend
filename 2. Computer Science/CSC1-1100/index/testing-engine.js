@@ -73,6 +73,28 @@ function formatQuestionType(rawCategory) {
     return rawCategory.replace(/_/g, '-').toLowerCase();
 }
 
+// 哪些题型自动判分。不在这个名单里的题交卷后走【学生自评】：
+// 摊开标准答案和减分条件，学生自己给自己打分。
+//
+// 收窄到这四类是有意的取舍。half-program / full-program 那种大题，
+// 光靠测试用例判不出"思路对但边界写错扣几分"，而录用例的成本又高，
+// 不如把判断交给学生自己——他手里有标准答案和减分条件。
+//
+// ⚠️ 必须用 formatQuestionType() 归一化之后再比。
+//    数据库里存的是 get_output（下划线），前端筛选器发的是 get-output（连字符），
+//    这两个值在这个项目里【同时存在】。直接比字面值会漏掉一整类题，
+//    而且是静默漏掉——那类题会被当成自评题，不报任何错
+const AUTO_GRADED_CATEGORIES = new Set([
+    'one-liners',
+    'debugging',
+    'get-output',
+    'mcq'
+]);
+
+function isAutoGradedCategory(rawCategory) {
+    return AUTO_GRADED_CATEGORIES.has(formatQuestionType(rawCategory));
+}
+
 // 题型筛选的唯一数据源。Practice 和 Marked Questions 两处筛选器都从这里生成。
 // 原来这份列表在 skeleton.html 里硬编码了两遍，加一个题型要改两处，
 // 漏掉一处是迟早的事——以后做课程参数化时，Math 的题型跟 CS1 完全不同，
@@ -247,6 +269,17 @@ function buildQuestionBlock(question, options = {}) {
     wrapper.className = 'question-block';
     wrapper.dataset.questionId = question.id; // 给"跳回原题"功能定位用
 
+    // 判分调度要用：靠 category 决定这道题是自动判还是学生自评，
+    // 靠 points 算总分。都挂在 DOM 上，免得判分时再去查一遍题目数据
+    if (question.question_category) {
+        wrapper.dataset.questionCategory = question.question_category;
+    }
+    // 只在真的有分值时才挂。null（还没录分值）不挂，
+    // 读的时候 undefined 和 "0" 才区分得开
+    if (question.points !== null && question.points !== undefined) {
+        wrapper.dataset.points = question.points;
+    }
+
     const labelRow = document.createElement('div');
     labelRow.className = 'question-label-row';
 
@@ -256,6 +289,15 @@ function buildQuestionBlock(question, options = {}) {
         ? `${options.displayNumber}.`
         : `${question.question_number}${question.subquestion_number ?? ''}.`;
     labelRow.appendChild(labelP);
+
+    // 考试模式：题号右边跟一个「标记」按钮。
+    // ⚠️ 只在 Examination 用（loadTestingQuestions 传 showExamFlag），
+    // Practice / Revision 那边用的是星标（options.showStar），
+    // 两者含义不同，见 toggleExamFlag 上面的说明
+    if (options.showExamFlag) {
+        const paperId = document.getElementById('testing-header')?.dataset.currentPaperId;
+        labelRow.appendChild(buildFlagButton(question.id, paperId));
+    }
 
     if (options.showYear && question.paper_year) {
         const yearTag = document.createElement('span');
@@ -884,10 +926,21 @@ function loadTestingQuestions(paperId, paperTitle) {
         // 结算状态也要清掉，否则重考时 Your performance / Previous attempts
         // 会在还没开始考的时候就挂在那儿
         document.body.classList.remove('exam-result-mode');
+
+        // 卡片里的数字也要清。只摘掉 exam-result-mode 的话，
+        // 上一场的分数还在 DOM 里躺着，下一次交卷判分失败时会原样露出来
+        resetPerformanceCard();
+
+        // 标记是"这场考试里待会儿回来看"的意思，重考是新的一场，
+        // 沿用上一场的标记没有意义
+        clearExamFlags();
     }
     questionsContainer.style.display = 'none';
     questionsContainer.classList.remove('exam-questions-enter');
     questionsContainer.innerHTML = '';
+
+    // 题目都清了，导航也要拆——否则会留下一条指向不存在的题的导航
+    destroyQuestionNav();
     submitBtn.disabled = true;
     submitBtn.textContent = 'All Done!!';
     submitBtn.style.display = 'none';   // 开始考试之前不显示
@@ -940,6 +993,21 @@ function loadTestingQuestions(paperId, paperTitle) {
             }
 
             // ---- 第二步：真正开考 ----
+
+            // ⚠️ 开考前先清掉上一场留下的作答。
+            //
+            // 以前只有点 Retake 才清，问题是【不点 Retake 的路径太多了】：
+            // 考完切个板块再回来、刷新页面、换年份版本再换回来……
+            // 这些都会走到"重新开考"，但一次 clearAllAnswers 都没跑过。
+            //
+            // 后果不只是输入框里有旧字。更麻烦的是后端那份也还在：
+            // 新的一场只答了第 1、3 题，中途一刷新，
+            // restoreSavedAnswers 会把第 2 题【上一场】的答案填回来，
+            // 学生根本分不出那是不是自己这次写的。
+            //
+            // "开考"才是清空的正确时机——Retake 只是通往开考的其中一条路。
+            clearAllAnswers(header.dataset.currentPaperId);
+
             enterExamInProgressState();
         });
 
@@ -970,9 +1038,11 @@ function loadTestingQuestions(paperId, paperTitle) {
                 el.readOnly = true;
             });
 
-            document.querySelectorAll('.testing-answer').forEach(el => {
-                el.classList.add('show');
-            });
+            // 标准答案交卷后才去后端拉——考试期间它根本没到过浏览器。
+            // 顺带把大题的自评界面装起来。
+            // ⚠️ 以前这里是给已经渲染好的 .testing-answer 加 .show，
+            //    也就是答案早就在 DOM 里、只是 display:none 藏着
+            revealSolutions(header.dataset.currentPaperId);
 
             // 交卷之后，Hide Timer 和提交按钮（原来的 Turned In）都不再需要，直接移除
             toggleTimerBtn.style.display = 'none';
@@ -1080,7 +1150,17 @@ function loadTestingQuestions(paperId, paperTitle) {
 
     showQuestionsLoading(questionsContainer);
 
-    fetch(`${APP_API_BASE}/api/questions/practice/${paperId}`)
+    // ⚠️ 走 /testing/ 而【不是】 /practice/。两个接口的区别就是
+    // 前者不带 question_solution 和 rubric。
+    //
+    // 以前这里用的是 /practice/，标准答案在进考试页面的那一刻就跟着
+    // 题目一起下发了，渲染成 <pre> 塞在 DOM 里，靠 CSS 的 display:none 藏着。
+    // 那不是"藏"——Elements 面板点开就是，控制台一行
+    // $$('.testing-answer').map(e => e.textContent) 全出来。
+    // 说明面板里那句 "Solutions stay hidden until you submit" 当时是假的。
+    //
+    // 现在答案由 revealSolutions() 在【交卷之后】单独去拉。
+    fetch(`${APP_API_BASE}/api/questions/testing/${paperId}`)
         .then(response => response.json())
         .then(data => {
             questionsContainer.innerHTML = '';   // 清掉加载提示，再填真正的题目
@@ -1091,7 +1171,7 @@ function loadTestingQuestions(paperId, paperTitle) {
             if (countEl) countEl.textContent = String(data.length);
 
             data.forEach(question => {
-                const wrapper = buildQuestionBlock(question);
+                const wrapper = buildQuestionBlock(question, { showExamFlag: true });
 
                 // 答题区和标准答案包在同一个容器里，交卷后并排显示。
                 //
@@ -1103,39 +1183,35 @@ function loadTestingQuestions(paperId, paperTitle) {
 
                 compare.appendChild(buildAnswerEditor(question.id));
 
-                if (question.question_solution) {
-                    const solutionBox = document.createElement('div');
-                    solutionBox.className = 'answer-solution-box';
-
-                    const solutionLabel = document.createElement('div');
-                    solutionLabel.className = 'answer-editor-label';
-                    solutionLabel.textContent = 'Model answer';
-                    solutionBox.appendChild(solutionLabel);
-
-                    const solutionPre = document.createElement('pre');
-                    solutionPre.className = 'answer-code testing-answer';
-                    solutionPre.textContent = question.question_solution;
-                    solutionBox.appendChild(solutionPre);
-
-                    compare.appendChild(solutionBox);
-                }
+                // 标准答案这里【故意不建】。
+                // /testing/ 接口根本没返回 question_solution，
+                // 交卷后由 revealSolutions() 拉 /practice/ 补进这个容器
 
                 wrapper.appendChild(compare);
 
                 questionsContainer.appendChild(wrapper);
             });
 
-            // 题目渲染完再把已保存的作答填回去。
-            // 中途刷新、误关标签页都能接着写
-            restoreSavedAnswers(paperId);
-
             // 有未结束的考试就直接恢复到考试中，跳过 Get Ready 那两步。
             // ⚠️ 必须放在题目渲染【之后】——恢复要显示题目容器、
-            // 那时候元素得已经存在。
-            // 也必须在 restoreSavedAnswers 之后：先把写过的内容填回去，
-            // 再切到考试中状态，顺序反了的话学生会先看到空白的输入框
+            // 那时候元素得已经存在
             const session = readExamSession(paperId);
+
+            // ⚠️ 【只在考试进行中才填回作答】。
+            //
+            // 以前这行是无条件跑的，结果是：考完试不点 Retake、切个板块
+            // 再回来，输入框里还是上一场写的东西，而页面明明显示
+            // "还没开考"。学生会以为系统记错了。
+            //
+            // 作答保存在后端本来就只是为了【中途刷新能接着写】，
+            // 没有会话就说明这不是"中途"，不该往框里填内容。
+            // 后端那份不删——重新开考时会被 clearAllAnswers 清掉，
+            // 而且留着也不显示，不会造成困扰。
+            //
+            // 必须在 enterExamInProgressState 之前：先把写过的内容填回去，
+            // 再切到考试中状态，顺序反了的话学生会先看到空白的输入框
             if (session) {
+                restoreSavedAnswers(paperId);
                 enterExamInProgressState(session.endTime);
             }
 
@@ -1197,6 +1273,17 @@ function enterExamInProgressState(resumeEndTime = null) {
 
     submitBtn.style.display = 'inline-block';
     questionsContainer.style.display = 'block';
+
+    // 载入本场考试的标记。刷新页面后要能恢复，
+    // 所以先读 sessionStorage 再建导航
+    flaggedQuestionIds = readExamFlags(header.dataset.currentPaperId);
+    document.querySelectorAll('#testing-questions .question-block').forEach(block => {
+        refreshFlagButton(block.dataset.questionId);
+    });
+
+    // 题目这时候才可见，导航条也在这时候才建。
+    // 开考前建的话点了跳不到任何地方——那时候题目容器是隐藏的
+    buildQuestionNav();
 
     if (isResume) {
         // 恢复：所有东西直接就位，不播动画
@@ -1305,6 +1392,545 @@ function readExamSession(paperId) {
 //   - 隐藏用例的输入在 Network 面板里看得见（浏览器端判分的固有限制）
 //   上线给学生用之前这两条都要处理。
 
+// 两栏之间的拖动条。
+//
+// 拖的是 CSS 变量 --answer-split（左栏占的百分比），布局是三列
+// minmax(0, var(--answer-split)) | auto | minmax(0, 1fr)——
+// 右栏吃掉剩下的，所以【总宽度不变】，左边多一点右边就少一点。
+//
+// 每道题的两栏各拖各的，不联动：学生可能只想把某一道题的
+// 标准答案拉宽看清楚，没理由把整张卷子都改了。
+const ANSWER_SPLIT_MIN = 20;   // 单侧最小占比（%）。再小就只剩一条缝，没有意义
+const ANSWER_SPLIT_MAX = 80;
+
+function buildSplitHandle(compare) {
+    const handle = document.createElement('button');
+    handle.type = 'button';
+    handle.className = 'answer-split-handle';
+    handle.setAttribute('aria-label', 'Drag to resize the two panels');
+
+    // 键盘也能调。拖动条对键盘用户本来完全不可用，
+    // 加上方向键之后至少能用
+    handle.setAttribute('role', 'separator');
+    handle.setAttribute('aria-orientation', 'vertical');
+
+    const setSplit = (percent) => {
+        const clamped = Math.min(ANSWER_SPLIT_MAX, Math.max(ANSWER_SPLIT_MIN, percent));
+        compare.style.setProperty('--answer-split', `${clamped}%`);
+        handle.setAttribute('aria-valuenow', String(Math.round(clamped)));
+    };
+
+    setSplit(50);
+
+    const onPointerMove = (event) => {
+        const rect = compare.getBoundingClientRect();
+        if (rect.width === 0) return;
+        setSplit(((event.clientX - rect.left) / rect.width) * 100);
+    };
+
+    const onPointerUp = () => {
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+        document.body.classList.remove('is-splitting');
+        handle.classList.remove('is-dragging');
+    };
+
+    handle.addEventListener('pointerdown', (event) => {
+        event.preventDefault();   // 不让浏览器把这次按下当成拖选文字的开始
+
+        // ⚠️ 监听挂在 document 上，不是 handle 上。
+        // 挂在 handle 上的话，鼠标一拖快就跑到条子外面去了，
+        // 后续的 move 事件收不到，表现就是"拖着拖着断了"
+        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointerup', onPointerUp);
+
+        document.body.classList.add('is-splitting');
+        handle.classList.add('is-dragging');
+    });
+
+    handle.addEventListener('keydown', (event) => {
+        const step = event.shiftKey ? 10 : 2;
+        const current = parseFloat(compare.style.getPropertyValue('--answer-split')) || 50;
+
+        if (event.key === 'ArrowLeft') {
+            setSplit(current - step);
+        } else if (event.key === 'ArrowRight') {
+            setSplit(current + step);
+        } else if (event.key === 'Home') {
+            setSplit(50);           // 回到对半
+        } else {
+            return;
+        }
+        event.preventDefault();
+    });
+
+    // 双击复位。拖歪了想回到对半，比一点点挪回去快
+    handle.addEventListener('dblclick', () => setSplit(50));
+
+    return handle;
+}
+
+// ============================================================
+// 交卷后：揭晓标准答案 + 学生自评
+// ============================================================
+//
+// 考试期间前端走 /testing/，那个接口不含 question_solution 和 rubric，
+// 所以答案压根没到过浏览器。交卷后才来拉 /practice/ 补上。
+//
+// 顺带把自评界面装起来：不在 AUTO_GRADED_CATEGORIES 里的题
+// （half-program / full-program 这类大题）自动判不了，
+// 交给学生对着标准答案和减分条件自己打分。
+function revealSolutions(paperId) {
+    return fetch(`${APP_API_BASE}/api/questions/practice/${paperId}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(questions => {
+            if (!questions) throw new Error('No solution data.');
+
+            const byId = new Map(questions.map(q => [String(q.id), q]));
+
+            document.querySelectorAll('#testing-questions .question-block').forEach(block => {
+                const question = byId.get(block.dataset.questionId);
+                const compare = block.querySelector('.answer-compare');
+                if (!question || !compare) return;
+
+                if (question.question_solution) {
+                    // 拖动条插在两栏【中间】，所以要在标准答案之前加进去。
+                    // 只有两栏都在时才有意义——没有标准答案的题只有一栏，
+                    // 那时候加个拖动条，拖谁?
+                    compare.appendChild(buildSplitHandle(compare));
+                    compare.classList.add('has-split');
+
+                    const solutionBox = document.createElement('div');
+                    solutionBox.className = 'answer-solution-box';
+
+                    const solutionLabel = document.createElement('div');
+                    solutionLabel.className = 'answer-editor-label';
+                    solutionLabel.textContent = 'Model answer';
+                    solutionBox.appendChild(solutionLabel);
+
+                    const solutionPre = document.createElement('pre');
+                    // 直接带上 .show：以前答案是开考前就渲染好、藏起来，
+                    // 交卷时再加 .show 显示。现在是交卷后才创建的，
+                    // 没有"先藏后显"这一步了
+                    solutionPre.className = 'answer-code testing-answer show';
+                    solutionPre.textContent = question.question_solution;
+
+                    // tabindex=0 让这块代码可以被点中（也能用 Tab 键走到）。
+                    // 【它是"点进来才能滚"的关键】：CSS 里滚动条是挂在
+                    // :focus 上的，元素不可聚焦就永远 focus 不了。
+                    // 顺带也解决了键盘用户没法滚长代码的问题
+                    solutionPre.tabIndex = 0;
+                    solutionPre.setAttribute('role', 'region');
+                    solutionPre.setAttribute('aria-label', 'Model answer, click to scroll');
+
+                    solutionBox.appendChild(solutionPre);
+
+                    // 内容超出了才加渐隐提示。不超出还加的话，
+                    // 底部凭空多一道看不出所以然的阴影
+                    requestAnimationFrame(() => {
+                        if (solutionPre.scrollHeight > solutionPre.clientHeight + 1) {
+                            solutionBox.classList.add('is-scrollable');
+                        }
+                    });
+
+                    compare.appendChild(solutionBox);
+                }
+
+                // 自动判分的题到此为止，分数由判分引擎给
+                if (isAutoGradedCategory(question.question_category)) return;
+
+                block.appendChild(buildSelfAssessment(question));
+            });
+
+            updateSelfAssessedTotal();
+        })
+        .catch(error => {
+            console.error('Failed to load solutions:', error);
+
+            // 答案拉不到就直说。什么都不做的话学生看到的是一片空白的
+            // 对照区，会以为这些题本来就没有标准答案
+            const container = document.getElementById('testing-questions');
+            if (container && !container.querySelector('.solutions-error')) {
+                const note = document.createElement('p');
+                note.className = 'solutions-error';
+                note.textContent = 'Could not load the model answers — please refresh the page.';
+                container.prepend(note);
+            }
+        });
+}
+
+// 一道自评题的界面：减分条件 + 自己打的分。
+//
+// ⚠️ 自评分【存不下来】。Exam_Completions 现在只有 user_id / paper_id /
+//    completed_at，没有分数字段（见 migration_grading_scope.sql 末尾的说明：
+//    自评 UI 还不存在的时候加列只会得到一列 NULL）。
+//    所以刷新页面自评分就没了，界面上要跟学生说清楚这件事
+function buildSelfAssessment(question) {
+    const box = document.createElement('div');
+    box.className = 'self-assess-box';
+
+    const heading = document.createElement('div');
+    heading.className = 'self-assess-heading';
+    heading.textContent = 'Mark this one yourself';
+    box.appendChild(heading);
+
+    if (question.rubric) {
+        const rubric = document.createElement('div');
+        rubric.className = 'self-assess-rubric';
+        // rubric 是老师录进数据库的自由文本，用 textContent 不用 innerHTML——
+        // 录入时手滑打了 < 号也不该变成标签
+        rubric.textContent = question.rubric;
+        box.appendChild(rubric);
+    } else {
+        const missing = document.createElement('p');
+        missing.className = 'self-assess-missing';
+        // 没有减分条件的话学生只能靠感觉打分，这一点要明说，
+        // 不能让界面看起来像"这题本来就没有评分标准"
+        missing.textContent = 'No marking guide has been entered for this question yet.';
+        box.appendChild(missing);
+    }
+
+    const row = document.createElement('div');
+    row.className = 'self-assess-row';
+
+    const points = Number(question.points);
+    const hasPoints = Number.isFinite(points) && points > 0;
+
+    if (hasPoints) {
+        const label = document.createElement('label');
+        label.className = 'self-assess-label';
+        label.textContent = 'Your mark';
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'self-assess-input';
+        input.min = '0';
+        input.max = String(points);
+        // 允许半分：CS1 的评分标准里 0.5 分很常见
+        input.step = '0.5';
+        input.placeholder = '—';
+        input.dataset.maxPoints = String(points);
+
+        input.addEventListener('input', () => {
+            // 夹在 [0, points] 之间。学生手滑输入 999 的话，
+            // 总分会变成一个没有意义的数字
+            const raw = parseFloat(input.value);
+            if (Number.isFinite(raw)) {
+                if (raw > points) input.value = String(points);
+                if (raw < 0) input.value = '0';
+            }
+            updateSelfAssessedTotal();
+        });
+
+        const outOf = document.createElement('span');
+        outOf.className = 'self-assess-outof';
+        outOf.textContent = `/ ${points}`;
+
+        label.appendChild(input);
+        label.appendChild(outOf);
+        row.appendChild(label);
+    } else {
+        // points 是 null（还没录分值）。
+        // ⚠️ 【不能】默认成 0 或者 1 —— 那样总分会静默算错，而且看不出来。
+        // 明说分值没录，这道题就不参与总分
+        const note = document.createElement('p');
+        note.className = 'self-assess-missing';
+        note.textContent = 'No mark value has been set for this question, so it is left out of the total.';
+        row.appendChild(note);
+    }
+
+    box.appendChild(row);
+    return box;
+}
+
+// 汇总自评分。
+//
+// ⚠️ 跟自动判分的分数【分开显示】，不合并成一个总分。
+//    两者性质不同：一个是测试用例跑出来的，一个是学生自己填的。
+//    合成一个数字之后，那个数字既不是客观成绩也不是自评成绩，
+//    没有任何一句话能准确描述它是什么
+function updateSelfAssessedTotal() {
+    const inputs = [...document.querySelectorAll('.self-assess-input')];
+    if (inputs.length === 0) return;
+
+    let earned = 0;
+    let total = 0;
+    let filled = 0;
+
+    inputs.forEach(input => {
+        const max = Number(input.dataset.maxPoints);
+        if (!Number.isFinite(max)) return;
+        total += max;
+
+        const value = parseFloat(input.value);
+        if (Number.isFinite(value)) {
+            earned += value;
+            filled += 1;
+        }
+    });
+
+    const card = document.querySelector('.exam-analytics-card.is-primary');
+    if (!card || total === 0) return;
+
+    let note = card.querySelector('.exam-self-score');
+    if (!note) {
+        note = document.createElement('p');
+        note.className = 'exam-self-score';
+        card.appendChild(note);
+    }
+
+    // 还没填完时把进度也写出来，否则学生看到一个偏低的总分
+    // 会以为是自己分低，其实只是还没填
+    const progress = filled < inputs.length
+        ? ` (${filled} of ${inputs.length} marked)`
+        : '';
+
+    note.textContent =
+        `Self-assessed: ${earned} / ${total} points${progress}. Not saved — refreshing clears it.`;
+}
+
+// ============================================================
+// 考试期间的「标记」
+// ============================================================
+//
+// 做不出来先跳过、待会儿回来看的那种标记。
+//
+// ⚠️ 跟 Revision 的星标（starredQuestionIds / question-star-btn）
+//    【不是一回事】，故意不复用：
+//      星标  = "这题以后要复习"，存后端，跨会话一直在
+//      标记  = "这场考试里待会儿回来看"，考完就没意义了
+//    混用的话，考试中随手标几道题，Revision 页面会莫名多出一堆内容。
+//
+// 存 sessionStorage，跟考试会话同寿命——刷新页面还在，
+// 关掉标签页就没了，跟这场考试一起结束。
+const EXAM_FLAGS_KEY = 'code100_exam_flags';
+
+let flaggedQuestionIds = new Set();
+
+function readExamFlags(paperId) {
+    try {
+        const raw = JSON.parse(sessionStorage.getItem(EXAM_FLAGS_KEY));
+        // 卷子对不上就当没有——换了年份版本，上一张卷的标记不该跟过来
+        if (!raw || String(raw.paperId) !== String(paperId)) return new Set();
+        return new Set(raw.ids || []);
+    } catch (e) {
+        return new Set();
+    }
+}
+
+function saveExamFlags(paperId) {
+    try {
+        sessionStorage.setItem(EXAM_FLAGS_KEY, JSON.stringify({
+            paperId: String(paperId),
+            ids: [...flaggedQuestionIds]
+        }));
+    } catch (e) {
+        // 存不进去最多是刷新后标记没了，不影响答题
+        console.warn('Failed to save exam flags:', e);
+    }
+}
+
+function clearExamFlags() {
+    flaggedQuestionIds = new Set();
+    try {
+        sessionStorage.removeItem(EXAM_FLAGS_KEY);
+    } catch (e) {
+        /* 清不掉也无所谓，下次开考会按 paperId 判定失效 */
+    }
+}
+
+// 切换一道题的标记状态，并把三处显示同步过去：
+// 题目上那个按钮、导航面板上的方格、sessionStorage
+function toggleExamFlag(questionId, paperId) {
+    const id = String(questionId);
+
+    if (flaggedQuestionIds.has(id)) {
+        flaggedQuestionIds.delete(id);
+    } else {
+        flaggedQuestionIds.add(id);
+    }
+
+    saveExamFlags(paperId);
+    refreshFlagButton(id);
+    refreshQuestionNavFlags();
+}
+
+function refreshFlagButton(questionId) {
+    const id = String(questionId);
+    const btn = document.querySelector(
+        `#testing-questions .question-block[data-question-id="${id}"] .exam-flag-btn`
+    );
+    if (!btn) return;
+
+    const on = flaggedQuestionIds.has(id);
+    btn.classList.toggle('is-flagged', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.title = on ? 'Remove flag' : 'Flag to come back to';
+}
+
+// 题目上那个「标记」按钮。放在答题框的标签那一行右边——
+// 学生是在写答案的时候决定"这题先跳过"的，按钮就该在手边
+function buildFlagButton(questionId, paperId) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'exam-flag-btn';
+    btn.innerHTML = '<i class="fa-regular fa-flag"></i><span>Flag</span>';
+    btn.setAttribute('aria-pressed', 'false');
+    btn.title = 'Flag to come back to';
+
+    btn.addEventListener('click', () => toggleExamFlag(questionId, paperId));
+    return btn;
+}
+
+// ============================================================
+// 题目导航条
+// ============================================================
+//
+// 容器（<nav id="exam-question-nav">）写在 skeleton.html 里，
+// 【不在这里 createElement】。理由是位置：
+// 它得待在 #testing-content 内部，切板块时跟着一起隐藏。
+// 以前是 appendChild 到 <body> 上的，结果考试中途切到 Revision，
+// 这条导航还浮在右边不走。
+//
+// 这里只负责往容器里填题号按钮——题号是动态的（每张卷子题目数不一样），
+// 那部分写不进 HTML。
+
+let questionNavObserver = null;
+
+function getQuestionNav() {
+    return document.getElementById('exam-question-nav');
+}
+
+function destroyQuestionNav() {
+    if (questionNavObserver) {
+        questionNavObserver.disconnect();
+        questionNavObserver = null;
+    }
+
+    // 边距跟条子同生同灭
+    document.body.classList.remove('has-question-nav');
+
+    const nav = getQuestionNav();
+    if (!nav) return;
+
+    // 清空并藏起来，但【保留元素本身】——它是 skeleton.html 的一部分，
+    // 删掉的话下次考试就没有容器可以填了
+    nav.innerHTML = '';
+    nav.hidden = true;
+}
+
+function buildQuestionNav() {
+    // 先清旧的。重考、换年份都会重建题目，
+    // 不清的话会留下一批指向已经不存在的题的按钮
+    destroyQuestionNav();
+
+    const nav = getQuestionNav();
+    const container = document.getElementById('testing-questions');
+    if (!nav || !container) return;
+
+    const blocks = [...container.querySelectorAll('.question-block')];
+    if (blocks.length === 0) return;
+
+    blocks.forEach(block => {
+        // 题号直接从已经渲染好的标签上读，不另外存一份到 dataset。
+        // 存两份的话，哪天题号的拼法改了（比如加上年份），
+        // 导航这边不会跟着变
+        const labelEl = block.querySelector('.question-label');
+        const label = labelEl ? labelEl.textContent.replace(/\.\s*$/, '').trim() : '•';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'exam-nav-item';
+        btn.textContent = label;
+        btn.dataset.targetQuestion = block.dataset.questionId;
+        btn.title = `Question ${label}`;
+
+        btn.addEventListener('click', () => {
+            // scroll-margin-top 在 CSS 里，保证跳过去之后
+            // 题目不会被顶部的 Test 分类导航栏压住
+            block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+
+        nav.appendChild(btn);
+    });
+
+    nav.hidden = false;
+
+    // 让 CSS 知道面板在了，好给 #testing-content 留出右边距。
+    // 边距和面板必须同生同灭，所以两件事绑在同一处开关上
+    document.body.classList.add('has-question-nav');
+
+
+    // 滚到哪道题就高亮哪个。
+    // rootMargin 上下各收 45%，等于只把视口中间那一条窄带算作"当前"——
+    // 不收的话屏幕上同时可见的三四道题会一起高亮，等于没高亮
+    //
+    // lastCurrent 记住上一个当前项：滚到页面最顶或最底时，
+    // 那条窄带里可能【一道题都没有】，这时候如果不兜底，
+    // 唯一显示数字的那一段会突然变回条子，看起来像坏了
+    let lastCurrent = nav.querySelector('.exam-nav-item');
+
+    questionNavObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+            const btn = nav.querySelector(
+                `[data-target-question="${entry.target.dataset.questionId}"]`
+            );
+            if (btn) btn.classList.toggle('is-current', entry.isIntersecting);
+        });
+
+        const found = nav.querySelector('.exam-nav-item.is-current');
+        if (found) {
+            lastCurrent = found;
+        } else if (lastCurrent) {
+            lastCurrent.classList.add('is-current');
+        }
+    }, { rootMargin: '-45% 0px -45% 0px' });
+
+    blocks.forEach(block => questionNavObserver.observe(block));
+
+    // 初始化在第一题。
+    // ⚠️ 必须放在 observe() 【之后】：IntersectionObserver 一注册就会
+    // 异步回调一次所有观察对象，没进窄带的会被 toggle 掉。
+    // 先加类的话会被那次回调抹掉。
+    // 这里等一帧，让那次初始回调先跑完，再由上面的 lastCurrent 兜底
+    // 补上第一题——所以这里不用自己加类，交给回调就行
+    if (lastCurrent) lastCurrent.classList.add('is-current');
+
+    refreshQuestionNavAnswered();
+    refreshQuestionNavFlags();
+}
+
+// 标出哪些题写了东西。考试快结束时扫一眼就知道哪道还空着——
+// 这是这个导航条比"回到顶部"有用的地方
+function refreshQuestionNavAnswered() {
+    const nav = getQuestionNav();
+    if (!nav || nav.hidden) return;
+
+    document.querySelectorAll('#testing-questions .question-block').forEach(block => {
+        const textarea = block.querySelector('.answer-editor-input');
+        const btn = nav.querySelector(`[data-target-question="${block.dataset.questionId}"]`);
+        if (btn) {
+            btn.classList.toggle('is-answered', !!(textarea && textarea.value.trim()));
+        }
+    });
+}
+
+// 把标记状态同步到导航面板。
+// ⚠️ 标记的样式要盖过"已作答"——一道题可能既写了答案又被标记，
+//    那时候学生更需要看到的是"这题我要回来改"，而不是"这题写了"。
+//    优先级在 CSS 里靠规则顺序保证（.is-flagged 写在 .is-answered 后面）
+function refreshQuestionNavFlags() {
+    const nav = getQuestionNav();
+    if (!nav || nav.hidden) return;
+
+    nav.querySelectorAll('.exam-nav-item').forEach(btn => {
+        btn.classList.toggle(
+            'is-flagged',
+            flaggedQuestionIds.has(String(btn.dataset.targetQuestion))
+        );
+    });
+}
+
 // 交卷后触发判分。没有测试用例的题会被跳过，不影响其他题
 function gradeExamAnswers(paperId) {
     if (typeof gradeQuestion !== 'function') {
@@ -1332,6 +1958,15 @@ function gradeExamAnswers(paperId) {
 
             blocks.forEach(block => {
                 const questionId = block.dataset.questionId;
+
+                // 只判这四类：one-liners / debugging / get-output / mcq。
+                // 其余的题（half-program、full-program）走自评，
+                // 由 revealSolutions() 给它们装自评界面。
+                //
+                // 这个判断放在取用例【之前】：万一某道大题被误录了测试用例，
+                // 也不该拿去自动判——题型才是唯一的依据
+                if (!isAutoGradedCategory(block.dataset.questionCategory)) return;
+
                 const cases = caseMap[questionId];
                 if (!cases || cases.length === 0) return;   // 这道题没录用例，跳过
 
@@ -1397,6 +2032,41 @@ function gradeExamAnswers(paperId) {
 function setPerformanceCardPending(pending) {
     const card = document.querySelector('.exam-analytics-card.is-primary');
     if (card) card.classList.toggle('is-calculating', pending);
+}
+
+// 把成绩卡片恢复成没考过的样子。重考/换卷子时调。
+//
+// ⚠️ 不清的话上一场的数字会留在卡片上。平时看不出来（那时候
+// exam-result-mode 已经摘掉，整张卡是隐藏的），但下一次交卷如果判分
+// 走不下去——比如新换的这张卷子没录用例——卡片一显示出来，
+// 挂着的还是【上一场】的分数，而它看起来跟本场成绩没有任何区别。
+function resetPerformanceCard() {
+    const card = document.querySelector('.exam-analytics-card.is-primary');
+    if (!card) return;
+
+    card.classList.remove('has-real-score', 'is-calculating');
+
+    // 两条说明文字都是动态插进去的，直接删掉
+    card.querySelectorAll('.exam-score-note, .exam-self-score').forEach(el => el.remove());
+
+    // 分数和用时回到 skeleton.html 里的初始状态："—"、不带单位、
+    // 不带 data-real-stat。这两格的真值分别由 applyRealScore /
+    // applyTimeSpentStat 在交卷时填
+    card.querySelectorAll('.exam-stat[data-real-stat]').forEach(stat => {
+        stat.removeAttribute('data-real-stat');
+    });
+
+    const stats = card.querySelectorAll('.exam-stat');
+    const scoreValue = stats[0] && stats[0].querySelector('.exam-stat-value');
+    if (scoreValue) scoreValue.textContent = '—';
+
+    const timeStat = stats[stats.length - 1];
+    if (timeStat) {
+        const timeValue = timeStat.querySelector('.exam-stat-value');
+        const timeLabel = timeStat.querySelector('.exam-stat-label');
+        if (timeValue) timeValue.textContent = '—';
+        if (timeLabel) timeLabel.textContent = 'Time spent';
+    }
 }
 
 // 判不出分的时候，明确说出来。
@@ -1622,9 +2292,14 @@ function autoGrowAnswerInput(textarea) {
 
     textarea.style.height = `${capped ? maxHeight : wanted}px`;
 
-    // 只在顶到上限时才放出滚动条。没顶到的时候保持 hidden——
-    // 高度正好等于内容高度，用 auto 的话亚像素误差会让滚动条一闪一闪的
-    textarea.style.overflowY = capped ? 'auto' : 'hidden';
+    // 顶到上限了就标记上。真正让它能滚的是 CSS 里的 .is-capped:focus——
+    // 【没点进来之前不给滚】，滚轮事件落到页面上，
+    // 不会出现鼠标划过答题框时整页突然不动了的情况。
+    //
+    // ⚠️ 这里不能写 style.overflowY：inline 样式盖过 CSS，
+    //    focus 那条规则就永远不生效了
+    textarea.classList.toggle('is-capped', capped);
+    textarea.style.overflowY = '';
 }
 
 function buildAnswerEditor(questionId) {
@@ -1665,7 +2340,11 @@ function buildAnswerEditor(questionId) {
 
     // 随内容自动增高，到 --answer-box-max-h 为止，再长就内部滚动。
     // 具体的取舍见 autoGrowAnswerInput 上面的注释
-    textarea.addEventListener('input', () => autoGrowAnswerInput(textarea));
+    textarea.addEventListener('input', () => {
+        autoGrowAnswerInput(textarea);
+        // 导航条上这道题的"已作答"标记跟着变
+        refreshQuestionNavAnswered();
+    });
 
     // 自动保存。防抖 800ms——每敲一个字就发一次请求会打爆后端，
     // 而且没有意义：中途的半截代码存下来也没用
@@ -1774,6 +2453,8 @@ function restoreSavedAnswers(paperId) {
             // autoGrowAnswerInput——刷新恢复出来的长答案也要受同一个上限管，
             // 两份实现迟早会改歪一边
             autoGrowAnswerInput(el);
+            // 恢复出来的作答也要在导航条上标成已答
+            refreshQuestionNavAnswered();
         });
     };
 

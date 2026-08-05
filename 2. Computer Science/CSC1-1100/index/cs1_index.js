@@ -392,6 +392,12 @@ function activateSection(item, direction) {
         section.classList.remove('active');
     });
 
+    // 题目导航条挂在 body 直属层（原因见 cs1_index.html 里的说明），
+    // 【不会】跟着 .test-section 一起隐藏，所以这里显式拆掉。
+    // 不拆的话切到 Practice / Revision 之后，右边还浮着一条
+    // 指向 Examination 题目的导航
+    if (typeof destroyQuestionNav === 'function') destroyQuestionNav();
+
     // 显示被选中的那一块
     const target = document.getElementById(item.id + '-content');
     if (target) {

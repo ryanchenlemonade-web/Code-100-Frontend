@@ -84,6 +84,30 @@
         <i class="fa-solid fa-expand"></i>
     </button>
 
+    <!-- 题目导航条：细长的分段竖条，固定悬浮在右侧垂直居中，
+         一段一道题，鼠标移上去展开显示题号。
+         段由 testing-engine.js 的 buildQuestionNav() 填进来——
+         题号是动态的（每张卷子题目数不一样），写不死在这里。
+
+         ⚠️ 必须放在 body 直属层，【不能】放进 skeleton.html 的
+         #testing-content 里。那两层容器（#testing-content 和
+         #content-container）在切板块的过渡里被写过 transform，
+         动画停下后计算值是 matrix(1,0,0,1,0,0)——一个"零位移的 transform"。
+         视觉上等于什么都没做，但对 position: fixed 来说照样建立包含块，
+         导航条会变成相对那个容器定位、跟着页面内容一起滚。
+         这个坑不显眼：DevTools 里那个 transform 值看起来就是"没动"。
+
+         代价是它不会随 .test-section 自动隐藏，
+         所以切板块时由 cs1_index.js 显式调 destroyQuestionNav()。
+
+         ⚠️ 位置要避开上面那个沉浸模式按钮（top: 14px, right: 18px）：
+         那个按钮任何时候都得能点到，所以这条导航垂直居中、z-index 也压它一层。
+
+         hidden 由 JS 控制：开考前题目容器是隐藏的，
+         那时候挂个跳转导航出来，点了什么都不会发生 -->
+    <nav class="exam-question-nav" id="exam-question-nav"
+         aria-label="Jump to question" hidden></nav>
+
     <!-- footer -->
     <div id="footer-container"></div>
 
