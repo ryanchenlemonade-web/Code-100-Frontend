@@ -215,6 +215,95 @@
     padding-left: 40px;
 }
 
+/* 交卷后题目跟上面拉开更多距离。
+   结算时上面多出了四块分析卡片，36px 的间距会让题目
+   看起来像是紧接着卡片的一部分。考试进行中不需要——
+   那时候上面只有一张矮条状的考卷卡片 */
+body.exam-result-mode #testing-questions {
+    margin-top: 72px;
+}
+
+/* ---------- 改卷说明条 ---------- */
+/* 交卷后若有可打分的自评题，先出现这一条：学生对着标准答案自己打分，
+   期间不亮分，点了按钮才把所有分数一起揭示。左对齐到题目的 padding-left */
+.exam-marking-hold {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin: 40px 40px 0;
+    padding: 16px 22px;
+    border-radius: 14px;
+    background: hsl(212, 100%, 97%);
+    border: 1px solid hsl(212, 60%, 88%);
+    /* 进入改卷阶段不硬跳：说明条滑入。配合下面 JS 的 smooth scroll，
+       整个"进入改卷"是滑进来的 */
+    animation: examMarkingReveal 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    scroll-margin-top: 20px;   /* smooth scroll 停下时上面留一点空 */
+}
+
+/* 改卷阶段新出现的标准答案栏 + 自评框也淡入滑上来，跟说明条一起"到位"，
+   而不是瞬间铺满。稍作错峰，观感更顺 */
+body.exam-marking-mode .answer-solution-box,
+body.exam-marking-mode .self-assess-box {
+    animation: examMarkingReveal 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    animation-delay: 0.08s;
+}
+
+/* ⚠️ to 用 transform: none（关键字），不是 translateY(0)——后者算出来是
+   matrix(1,0,0,1,0,0)，会给后代 position:fixed 建立包含块（见 HANDOFF 那个坑）。
+   none 不会。 */
+@keyframes examMarkingReveal {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: none; }
+}
+
+.exam-marking-hold-text {
+    margin: 0;
+    flex: 1 1 340px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: hsl(220, 25%, 32%);
+}
+
+.exam-marking-hold-text strong {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 0.98rem;
+    color: hsl(220, 30%, 20%);
+}
+
+.exam-marking-hold-btn {
+    flex-shrink: 0;
+    padding: 11px 22px;
+    border: none;
+    border-radius: 10px;
+    background: hsl(212, 90%, 52%);
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.exam-marking-hold-btn:hover {
+    background: hsl(212, 90%, 46%);
+}
+
+/* 没全部改完时禁用：压暗 + 禁用光标，点了也不响应（JS 里也挡了一道） */
+.exam-marking-hold-btn:disabled {
+    background: hsl(212, 20%, 72%);
+    cursor: not-allowed;
+}
+
+/* 改卷阶段藏起卷面头卡（Correction 那张）——等学生 Submit 后，
+   finalizeExamResults 摘掉 exam-marking-mode，它才跟结果一起出现。
+   开关加在 enterMarkingHold、摘在 finalizeExamResults / 重考重置 */
+body.exam-marking-mode #testing-header {
+    display: none;
+}
+
 /* ---------- 判分待机 ---------- */
 /* Pyodide 首次要下 3~4MB，这段时间必须有明确反馈，
    否则学生会以为功能坏了 */
@@ -389,6 +478,9 @@
 }
 
 .exam-nav-item {
+    /* --nav-strong = 这个按钮 hover / 当前态用的【深色调】。
+       默认是中性蓝灰（不再是原来的深灰）；带颜色的状态各自覆盖成对应色调 */
+    --nav-strong: hsl(220, 18%, 56%);
     width: 32px;
     height: 32px;
     padding: 0;
@@ -404,42 +496,61 @@
                 border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* hover：边框换成本按钮的色调，不再是统一的灰 */
 .exam-nav-item:hover {
-    border-color: hsl(220, 10%, 70%);
+    border-color: var(--nav-strong);
     box-shadow: 0 2px 8px hsla(220, 12%, 30%, 0.16);
 }
 
-/* 已作答：浅绿。
-   ⚠️ 只表示"写了东西"，不表示"写对了"——判分是另一回事。
-   所以是填个底色，不打勾：打勾会被读成"这题做对了" */
+/* 已作答：浅绿（仅考试期间；只表示"写了东西"，不代表对错）。
+   ⚠️ 结果页会被 clearNavExamStates() 清掉，换成得分色 */
 .exam-nav-item.is-answered {
     background: hsl(145, 45%, 90%);
     border-color: hsl(145, 35%, 78%);
     color: hsl(145, 40%, 26%);
+    --nav-strong: hsl(145, 46%, 42%);
 }
 
-/* 已标记：浅红。
-   ⚠️ 这条【必须写在 .is-answered 后面】——一道题可能既写了答案
-   又被标记，两条规则特异性一样，靠顺序决定谁赢。
-   这时候该显示红：学生更需要知道"这题我要回来改"，
-   而不是"这题写了"。写反了的话标记就等于白标 */
+/* 已标记：浅红（仅考试期间）。必须写在 .is-answered 后面——同特异性靠顺序，
+   既答又标时该显红（"要回来改"比"写了"更要紧） */
 .exam-nav-item.is-flagged {
     background: hsl(0, 70%, 93%);
     border-color: hsl(0, 55%, 82%);
     color: hsl(0, 50%, 34%);
+    --nav-strong: hsl(0, 62%, 55%);
 }
 
-/* 当前滚到的那道题。
-   ⚠️ 写在最后，所以盖过绿和红——当前位置比"做没做/标没标"更要紧，
-   而且它只有一个，不会把整片颜色都吃掉 */
+/* 结果页得分色带（跟题号旁的得分徽标同一套色）：红 / 橙 / 绿。
+   由 setNavScoreBand() 在交卷判分后填上 */
+.exam-nav-item.is-score-low {
+    background: hsl(0, 75%, 94%);
+    border-color: hsl(0, 58%, 84%);
+    color: hsl(0, 55%, 38%);
+    --nav-strong: hsl(0, 62%, 55%);
+}
+.exam-nav-item.is-score-mid {
+    background: hsl(32, 92%, 90%);
+    border-color: hsl(32, 78%, 80%);
+    color: hsl(28, 75%, 36%);
+    --nav-strong: hsl(30, 82%, 50%);
+}
+.exam-nav-item.is-score-high {
+    background: hsl(145, 52%, 90%);
+    border-color: hsl(145, 40%, 78%);
+    color: hsl(145, 44%, 28%);
+    --nav-strong: hsl(145, 46%, 42%);
+}
+
+/* 当前滚到的那道题：填成本按钮的色调（--nav-strong），不再一律深灰。
+   ⚠️ 写在所有配色状态【后面】——同特异性，靠顺序盖过它们的背景 */
 .exam-nav-item.is-current {
-    background: hsl(220, 12%, 38%);
-    border-color: hsl(220, 12%, 38%);
+    background: var(--nav-strong);
+    border-color: var(--nav-strong);
     color: #fff;
 }
 
 .exam-nav-item:focus-visible {
-    outline: 2px solid hsl(220, 12%, 38%);
+    outline: 2px solid var(--nav-strong);
     outline-offset: 2px;
 }
 
@@ -546,13 +657,21 @@ body.exam-result-mode .exam-flag-btn {
    减分条件让学生自己打分。这一块放在对照区【下面】——
    先看自己写的、再看标准答案，最后才打分，顺序跟人实际改卷子一样 */
 .self-assess-box {
-    margin: 4px 0 18px;
+    /* 上边距≈原来题号↔题干的间距（题干 <pre> 的默认上边距，约 16px），
+       给题号留出空隙；下边距 0，让题干贴着自评框（见下面相邻规则） */
+    margin: 16px 0 0;
     padding: 14px 16px;
     border-radius: 12px;
     /* 用虚线边框跟上面的判分面板（实线）区分开：
        那个是机器判的，这个是自己填的，视觉上不该长得一样 */
     border: 1px dashed hsla(220, 20%, 78%, 0.9);
     background: hsl(45, 60%, 98%);
+}
+
+/* 自评框正下方就是题干 <pre>：去掉它的默认上边距，让题干贴着自评框，
+   间距只留在自评框【上方】（对着题号） */
+.self-assess-box + .question-code {
+    margin-top: 0;
 }
 
 .self-assess-heading {
@@ -611,6 +730,13 @@ body.exam-result-mode .exam-flag-btn {
     outline: none;
     border-color: hsl(210, 70%, 60%);
     box-shadow: 0 0 0 3px hsla(210, 70%, 60%, 0.15);
+}
+
+/* 提交查看成绩后，自评分锁死（readOnly）：灰底 + 不可编辑光标，表明改不了了 */
+.self-assess-input.is-locked {
+    background: hsl(0, 0%, 95%);
+    color: hsl(220, 10%, 45%);
+    cursor: not-allowed;
 }
 
 .self-assess-outof {
@@ -765,14 +891,17 @@ body.exam-result-mode .exam-flag-btn {
     align-items: start;
 }
 
-/* 交卷后标准答案出现，变成两列。
-   
-   ⚠️ 只用 body.exam-result-mode 这一个开关。
-   我一度还写了 .testing-header.exam-finished ~ #testing-questions，
-   但那条【永远不生效】——#testing-header 在 .exam-layout 里面，
-   #testing-questions 在外面，两者不是兄弟，~ 选择器匹配不上。
-   body 上的 class 不受 DOM 层级影响，这种跨结构的状态就该挂在 body 上 */
-body.exam-result-mode .answer-compare {
+/* 标准答案出现后变成左右两列。
+
+   ⚠️ 【改卷阶段(exam-marking-mode)和结果页(exam-result-mode)都要并排】——
+   改卷时学生正对着标准答案打分，左右并排才好改；到结果页继续保持。
+   两个 body class 都要写，漏了改卷这个，改卷时两栏会竖着堆（踩过一次）。
+
+   为什么挂 body 不挂结构选择器：#testing-header 在 .exam-layout 里、
+   #testing-questions 在外面，两者不是兄弟，~ 选择器匹配不上；
+   body 上的 class 不受 DOM 层级影响，这种跨结构的状态就该挂 body。 */
+body.exam-result-mode .answer-compare,
+body.exam-marking-mode .answer-compare {
     grid-template-columns: 1fr 1fr;
 }
 
@@ -786,7 +915,8 @@ body.exam-result-mode .answer-compare {
    ⚠️ 两侧都写 minmax(0, ...)：grid 子项的默认最小尺寸是 auto，
    也就是"不能小于内容"。里面是代码块，一行长代码就能顶住不让缩，
    拖动会卡住不动。写 0 才能真正拖到小 */
-body.exam-result-mode .answer-compare.has-split {
+body.exam-result-mode .answer-compare.has-split,
+body.exam-marking-mode .answer-compare.has-split {
     grid-template-columns: minmax(0, var(--answer-split, 50%))
                            auto
                            minmax(0, 1fr);
@@ -863,7 +993,8 @@ body.is-splitting * {
 /* 窄屏堆叠回上下排列。
    两边各减半之后，代码行会频繁折行，反而比上下排更难读 */
 @media (max-width: 900px) {
-    body.exam-result-mode .answer-compare {
+    body.exam-result-mode .answer-compare,
+    body.exam-marking-mode .answer-compare {
         grid-template-columns: 1fr;
     }
 
@@ -872,7 +1003,8 @@ body.is-splitting * {
        ⚠️ .has-split 那条的特异性更高（多一个 class），
        所以必须在这里【显式】写一遍把它压回单列，
        只写上面那条压不住 */
-    body.exam-result-mode .answer-compare.has-split {
+    body.exam-result-mode .answer-compare.has-split,
+    body.exam-marking-mode .answer-compare.has-split {
         grid-template-columns: 1fr;
         gap: 16px;
     }
@@ -978,7 +1110,8 @@ body.is-splitting * {
    而学生交卷后往往想把自己的答案复制出来跟标准答案对照 */
 /* ⚠️ 同上：只用 body.exam-result-mode。
    .testing-header.exam-finished ~ * 那条匹配不到题目区 */
-body.exam-result-mode .answer-editor-input {
+body.exam-result-mode .answer-editor-input,
+body.exam-marking-mode .answer-editor-input {
     background: hsl(220, 20%, 97%);
     color: hsl(220, 12%, 42%);
     border-color: hsla(220, 15%, 90%, 0.9);
@@ -1090,6 +1223,57 @@ body.exam-result-mode .answer-editor-input {
     color: hsl(0, 0%, 35%);
     font-size: 0.8rem;
     font-weight: 600;
+}
+
+/* 分值徽标：蓝色，跟灰色题型标签区分开，一眼看出这题值多少分 */
+.question-points-tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background-color: hsl(212, 100%, 93%);
+    color: hsl(212, 80%, 38%);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+/* 结果页题号旁的「得分/总分」徽标，放在分值徽标左边。
+   自动判分(is-auto, 云)和自评(is-self, 铅笔)配色不同，一眼区分判法 */
+.question-earned-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.question-earned-tag i {
+    font-size: 0.72rem;
+}
+
+/* 颜色按得分色带（浅色调），auto/self 的区分交给里面的云/铅笔图标。
+   0–5/10 红、6–8/10 橙、9–10/10 绿 */
+.question-earned-tag.is-score-low {
+    background-color: hsl(0, 75%, 94%);
+    color: hsl(0, 58%, 42%);
+}
+
+.question-earned-tag.is-score-mid {
+    background-color: hsl(32, 92%, 90%);
+    color: hsl(28, 78%, 38%);
+}
+
+.question-earned-tag.is-score-high {
+    background-color: hsl(145, 52%, 90%);
+    color: hsl(145, 46%, 30%);
+}
+
+/* 最终结果页把自评框藏掉——分数已经变成题号旁的 X/10 徽标了。
+   ⚠️ 用 display:none 不删元素：.self-assess-input 要留在 DOM 里，
+   collectSelfTotal / saveExamAttempt 还得读它的值算自评分 */
+body.exam-result-mode .self-assess-box {
+    display: none;
 }
 
 /* 星标按钮：紧跟在题型标签（比如 "full-program"）旁边，空心=没标，实心+黄色=已标（联动 Revision 页面） */
@@ -3523,12 +3707,16 @@ body.exam-result-mode .exam-analytics-card.is-result-only {
    比单纯两行"日期 + 分数"更能看出"这是一次次累积的" */
 .exam-attempts {
     margin: 0;
-    padding: 0 0 0 18px;
+    padding: 0 4px 0 18px;
     list-style: none;
     display: flex;
     flex-direction: column;
     gap: 14px;
     position: relative;
+    /* 历次尝试多了不让卡片无限长高：封顶后内部滚动。
+       ~4 条以内正常显示，超出就在卡内滚，外面版式不被撑乱 */
+    max-height: 240px;
+    overflow-y: auto;
 }
 
 /* 竖线。用 ::before 画而不是给每个 li 加边框——
@@ -3610,12 +3798,147 @@ body.exam-result-mode .exam-analytics-card.is-result-only {
     font-size: 0.62rem;
 }
 
+/* 分数比上一次低时用红。默认那套绿色是"涨"的语义，
+   直接套在"跌"上会把退步显示成好事 */
+.exam-attempt-delta.is-down {
+    background: hsl(4, 60%, 96%);
+    color: hsl(4, 55%, 46%);
+}
+
+/* Scoring detail：两层"你 vs 所有人"，每层复用 .exam-compare-* 的对比条 */
+.scoring-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.scoring-layer-head {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(220, 10%, 50%);
+    margin-bottom: 8px;
+}
+
+.scoring-layer .exam-compare-row + .exam-compare-row {
+    margin-top: 6px;
+}
+
 /* 难度分析 */
 .exam-difficulty-stars {
     display: flex;
     gap: 3px;
     color: hsl(38, 92%, 52%);
     font-size: 0.88rem;
+}
+
+/* ---------- 交卷后的难度评分中间屏 ---------- */
+/* 交卷 →〔评分，可跳过〕→ 结果。遮罩样式对齐 cribsheet-modal 那套 */
+.paper-rating-backdrop {
+    position: fixed;
+    inset: 0;
+    background: hsla(220, 30%, 12%, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 4200;
+    animation: paperRatingFade 0.18s ease;
+}
+
+@keyframes paperRatingFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.paper-rating-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 28px 30px;
+    width: 420px;
+    max-width: 90vw;
+    text-align: center;
+    box-shadow:
+        0 1px 3px hsla(220, 30%, 20%, 0.1),
+        0 18px 50px hsla(220, 30%, 15%, 0.22);
+}
+
+.paper-rating-card h3 {
+    margin: 0 0 8px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: hsl(220, 20%, 15%);
+}
+
+.paper-rating-sub {
+    margin: 0 0 20px;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    color: hsl(220, 10%, 50%);
+}
+
+.paper-rating-stars {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.paper-rating-star {
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 4px;
+    font-size: 1.9rem;
+    line-height: 1;
+    color: hsl(220, 16%, 82%);            /* 未点亮：灰 */
+    transition: color 0.12s ease, transform 0.12s ease;
+}
+
+.paper-rating-star:hover { transform: scale(1.12); }
+.paper-rating-star.filled { color: hsl(38, 92%, 52%); }   /* 点亮：金 */
+
+.paper-rating-star:focus-visible {
+    outline: 2px solid hsl(210, 90%, 55%);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+.paper-rating-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+}
+
+.paper-rating-skip,
+.paper-rating-submit {
+    padding: 9px 22px;
+    border-radius: 999px;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.paper-rating-skip {
+    border: 1px solid hsla(220, 20%, 85%, 0.9);
+    background: #ffffff;
+    color: hsl(220, 12%, 42%);
+}
+
+.paper-rating-skip:hover { background: hsl(220, 25%, 97%); }
+
+.paper-rating-submit {
+    border: none;
+    background: hsl(210, 90%, 52%);
+    color: #ffffff;
+}
+
+.paper-rating-submit:hover:not(:disabled) { background: hsl(210, 90%, 46%); }
+
+.paper-rating-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .exam-topic-tags {

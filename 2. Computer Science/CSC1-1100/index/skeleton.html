@@ -149,8 +149,11 @@
                         <span class="exam-stat-value">—</span>
                         <span class="exam-stat-label">Your score</span>
                     </div>
-                    <div class="exam-stat" data-mock="true">
-                        <span class="exam-stat-value exam-stat-accent">Top 15<span class="exam-stat-unit">%</span></span>
+                    <!-- Ranking：真实百分位，由 applyRanking() 从 /my-ranking 填。
+                         初始 "—"；只有你一个考生（out_of<2）或这次无可计分内容时保持 "—"。
+                         data-real-stat：告诉 has-real-score 的 CSS 这是真数据，别加 "(sample)" 后缀 -->
+                    <div class="exam-stat" data-real-stat="true">
+                        <span class="exam-stat-value exam-stat-accent" data-ranking-value>—</span>
                         <span class="exam-stat-label">Ranking</span>
                     </div>
                     <!-- 原来是 Class average（假）。换成考试用时——真数据，
@@ -163,79 +166,62 @@
                     </div>
                 </div>
 
-                <!-- 整块标 mock：它唯一的作用是跟班级平均比，
-                     而班级平均这个网站算不出来。没有班级数据的话
-                     只剩一根 You 的进度条，比了个寂寞 -->
-                <div class="exam-compare" data-mock="true">
+                <!-- You vs Global 的总体对比（自动+自评合并）。由 applyOverallComparison()
+                     在交卷后填真实数据：You=本场总体%，Global=全体最新一次的平均。
+                     初始 0%/"—"，没数据时保持空条不摆假数字。data-overall-* 供 JS 定位 -->
+                <div class="exam-compare">
                     <div class="exam-compare-row">
                         <span class="exam-compare-label">You</span>
-                        <div class="exam-compare-track"><div class="exam-compare-fill is-you" style="width: 92%;"></div></div>
-                        <span class="exam-compare-num">92%</span>
+                        <div class="exam-compare-track"><div class="exam-compare-fill is-you" data-overall-you-fill style="width: 0%;"></div></div>
+                        <span class="exam-compare-num" data-overall-you-num>—</span>
                     </div>
                     <div class="exam-compare-row">
-                        <span class="exam-compare-label">Class</span>
-                        <div class="exam-compare-track"><div class="exam-compare-fill" style="width: 78%;"></div></div>
-                        <span class="exam-compare-num">78%</span>
+                        <span class="exam-compare-label">Global</span>
+                        <div class="exam-compare-track"><div class="exam-compare-fill" data-overall-global-fill style="width: 0%;"></div></div>
+                        <span class="exam-compare-num" data-overall-global-num>—</span>
                     </div>
                 </div>
             </section>
 
-            <section class="exam-analytics-card is-result-only" data-mock="true">
+            <!-- 历次尝试。交卷后由 loadPreviousAttempts() 按后端返回的真实分数填。
+                 ⚠️ 依赖后端 /api/progress/exams/{paperId}/attempts，【还没这个接口】，
+                    也要 Exam_Completions 先存 auto_points（绝对值，不存百分比）。
+                    见 HANDOFF 待办。接口没上线前这张卡显示 "Coming soon" 占位，
+                    绝不显示假历史；接口在但确实没考过则显示诚实空态。 -->
+            <section class="exam-analytics-card is-result-only">
                 <h3>Previous attempts</h3>
-                <ol class="exam-attempts">
-                    <li>
-                        <span class="exam-attempt-no">Attempt 1</span>
-                        <span class="exam-attempt-score">85%</span>
-                        <span class="exam-attempt-date">Jul 20</span>
-                    </li>
-                    <li>
-                        <span class="exam-attempt-no">Attempt 2</span>
-                        <span class="exam-attempt-score">92%</span>
-                        <span class="exam-attempt-date">Jul 30</span>
-                        <span class="exam-attempt-delta"><i class="fa-solid fa-arrow-up"></i> 7%</span>
-                    </li>
-                </ol>
+                <ol class="exam-attempts"></ol>
             </section>
 
-            <section class="exam-analytics-card" data-mock="true">
-                <h3>Exam readiness</h3>
-                <ul class="exam-readiness-list">
-                    <li>
-                        <span class="exam-readiness-label">Practice</span>
-                        <div class="exam-readiness-bar"><div class="exam-readiness-fill" style="width: 82%;"></div></div>
-                        <span class="exam-readiness-num">82%</span>
-                    </li>
-                    <li>
-                        <span class="exam-readiness-label">Revision</span>
-                        <div class="exam-readiness-bar"><div class="exam-readiness-fill" style="width: 90%;"></div></div>
-                        <span class="exam-readiness-num">90%</span>
-                    </li>
-                    <li>
-                        <span class="exam-readiness-label">Marked</span>
-                        <div class="exam-readiness-bar"><div class="exam-readiness-fill" style="width: 75%;"></div></div>
-                        <span class="exam-readiness-num">75%</span>
-                    </li>
-                    <li class="is-overall">
-                        <span class="exam-readiness-label">Overall</span>
-                        <div class="exam-readiness-bar"><div class="exam-readiness-fill" style="width: 82%;"></div></div>
-                        <span class="exam-readiness-num">82%</span>
-                    </li>
-                </ul>
+            <!-- Scoring Detail：原来是假的 Exam readiness，换成真数据。
+                 交卷后 renderScoringDetail() 填两层：上层自动判分、下层自评，
+                 各是"你 vs 所有人"。is-result-only：分数只在交卷后才有。
+                 里面的内容全部由 JS 生成（数据来自 score-stats + 本场分数）。 -->
+            <section class="exam-analytics-card is-result-only">
+                <h3>Scoring detail</h3>
+                <div class="scoring-detail" data-scoring-detail></div>
             </section>
 
-            <section class="exam-analytics-card" data-mock="true">
+            <!-- ⚠️ 混合卡，跟 Your performance 一样：星级能真，另两块是假的。
+                 data-mock 从整张卡挪到【确实假的】那两块（同 Ranking 的处理）。
+                 整张卡改成 is-result-only——星级要真只能交卷后算（数据在 /practice/，
+                 考前拉会泄露答案），所以不在考前那屏出现。 -->
+            <section class="exam-analytics-card is-result-only">
                 <h3>Difficulty analysis</h3>
-                <div class="exam-difficulty-stars">
-                    <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-regular fa-star"></i>
-                </div>
-                <p class="exam-analytics-note">Most students score 70–80%.</p>
+                <!-- 星级：交卷后由 applyRealDifficulty() 按本卷各题的 avg_rating
+                     加权聚合填入。初始留空——没有真实评分时保持空，不摆假星。 -->
+                <div class="exam-difficulty-stars" aria-label="Difficulty rating"></div>
 
+                <!-- 这句改成真实的全体平均分：applyGlobalAverageNote() 从 score-stats 的
+                     overall_avg_pct 填。没有全体数据时整句隐藏（不再写死 70-80%）。 -->
+                <p class="exam-analytics-note" data-global-average-note hidden></p>
+
+                <!-- Hard topics 现在是真数据：renderHardTopics() 把本卷各题按 topic（知识点）
+                     分组，用单题难度评分排序，最难的几个填进来。tooltip 是真实的平均难度。
+                     没有带评分的知识点时，整块（小标题 + 标签）由 JS 隐藏——不摆假的。
+                     topic 是 admin 录的，评分是学生在 Practice 给单题打的星，都是真的。 -->
                 <h4 class="exam-subhead">Hard topics</h4>
-                <div class="exam-topic-tags">
-                    <span data-tip="45% of students missed this topic.">Recursion</span>
-                    <span data-tip="38% of students missed this topic.">Pointers</span>
-                    <span data-tip="31% of students missed this topic.">Memory management</span>
-                </div>
+                <div class="exam-topic-tags"></div>
             </section>
 
         </div>

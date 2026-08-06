@@ -24,6 +24,18 @@
 
         <nav class="admin-sidebar">
             <h2 class="admin-sidebar-title">Code 100 Admin</h2>
+
+            <!-- 课程上下文：贯穿题库/试卷/Cribsheet 的作用域。切换后各列表按课程重载。
+                 course 存在 localStorage，选项从已有试卷去重而来。"+ New" 直接建一门新课
+                 （切过去、录第一张卷子时才真正落库）。 -->
+            <div class="admin-course-switch">
+                <label for="admin-course-select">Course</label>
+                <div class="admin-course-row">
+                    <select id="admin-course-select"></select>
+                    <button type="button" id="admin-course-add" title="Add a new course">+ New</button>
+                </div>
+            </div>
+
             <button type="button" class="admin-nav-item active" data-section="questions">Question Bank</button>
             <button type="button" class="admin-nav-item" data-section="cribsheet">Cribsheet Library</button>
             <button type="button" class="admin-nav-item" data-section="note-sizes">Note Sizes</button>
@@ -102,6 +114,20 @@
                         <div class="form-row">
                             <label for="question-solution-input">Solution</label>
                             <textarea id="question-solution-input" rows="7"></textarea>
+                        </div>
+
+                        <!-- 判分/自评元数据。points 留空 = 未设置（NULL，不是 0 分）；
+                             rubric 只在交卷后的自评界面展示，用来给学生自己扣分。 -->
+                        <div class="form-row form-row-inline">
+                            <div>
+                                <label for="question-points-input">Points (leave blank if not set — blank means "no score yet", not 0)</label>
+                                <input type="number" id="question-points-input" min="0" step="1" placeholder="e.g. 10">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="question-rubric-input">Rubric — deductions for self-graded questions (optional)</label>
+                            <textarea id="question-rubric-input" rows="4" placeholder="One deduction per line, e.g.&#10;- Missing empty-list check: -2&#10;- Logic correct but no return: -3"></textarea>
                         </div>
 
                         <div class="form-actions">

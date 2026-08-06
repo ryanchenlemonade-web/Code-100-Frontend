@@ -414,6 +414,22 @@ function activateSection(item, direction) {
     if (item.id === 'revision') {
         showRevisionView('landing');
     }
+
+    // 切回 Examination（id 是 'testing'）时，如果正处在考试中或批改结果页，
+    // 重建右侧题号导航条。它挂在 body 直属层，上面切板块时被 destroyQuestionNav()
+    // 拆掉了——题目还在、状态也还在，只是导航条没了，回来得把它重建出来。
+    if (item.id === 'testing') {
+        const header = document.getElementById('testing-header');
+        // exam-in-progress = 考试中；exam-finished = 交卷后（改卷阶段 + 已亮分都算），
+        // 两个状态下题目都在、导航条都该在。用 exam-finished 而不是 exam-result-mode，
+        // 因为"改卷阶段"还没挂 exam-result-mode，但那时导航条也得能重建
+        const active = header && (header.classList.contains('exam-in-progress')
+            || header.classList.contains('exam-finished'));
+        const hasQuestions = document.querySelector('#testing-questions .question-block');
+        if (active && hasQuestions && typeof buildQuestionNav === 'function') {
+            buildQuestionNav();
+        }
+    }
 }
 
 items.forEach(item => {

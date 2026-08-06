@@ -290,6 +290,17 @@ function buildQuestionBlock(question, options = {}) {
         : `${question.question_number}${question.subquestion_number ?? ''}.`;
     labelRow.appendChild(labelP);
 
+    // 分值徽标：放在题号之后、Flag 按钮【左边】。只在录了分值时显示（null = 还没录，不摆）。
+    // 天然只出现在考试（TestingDto 带 points）和结果（PracticeDto 带 points）里——
+    // Practice 那个 DTO 没有 points 字段，所以 Practice 页面不会出现，无需额外判断
+    if (question.points !== null && question.points !== undefined) {
+        const pointsTag = document.createElement('span');
+        pointsTag.className = 'question-points-tag';
+        const p = Number(question.points);
+        pointsTag.textContent = `${p} ${p === 1 ? 'pt' : 'pts'}`;
+        labelRow.appendChild(pointsTag);
+    }
+
     // 考试模式：题号右边跟一个「标记」按钮。
     // ⚠️ 只在 Examination 用（loadTestingQuestions 传 showExamFlag），
     // Practice / Revision 那边用的是星标（options.showStar），
@@ -853,6 +864,425 @@ function recordExamCompletion(paperId) {
         .catch(error => console.error('Failed to record exam completion:', error));
 }
 
+// 揭晓考试结果。原来是交卷处理器里的一整段，抽成顶层函数——好在交卷和
+// 结果【之间】插一屏难度评分（见 showPaperRatingStep）。评分/跳过之后才调它。
+//
+// 自己按 id 重取元素，不依赖交卷处理器的闭包：那些元素都是 getElementById
+// 拿的稳定节点，重取跟闭包捕获等价，但少一层作用域耦合。
+function revealExamResults(paperId, totalElapsedSeconds) {
+    const header = document.getElementById('testing-header');
+    const headerTitle = header ? header.querySelector('h2') : null;
+    const timerDisplay = document.getElementById('testing-timer');
+    const toggleTimerBtn = document.getElementById('timer-toggle-btn');
+    const submitBtn = document.getElementById('testing-submit-btn');
+    const backToTopBtn = document.getElementById('testing-back-to-top-btn');
+    const retakeBtn = document.getElementById('testing-retake-btn');
+    const versionWrap = document.getElementById('version-selector-wrap');
+    if (!header || !headerTitle || !timerDisplay) return;
+
+    // 进入批改模式：banner 左边换成 "Correction"，用时 + Retake 留在右侧
+    header.classList.remove('exam-in-progress');
+    header.classList.add('exam-finished');
+    headerTitle.textContent = 'Correction';
+
+    timerDisplay.textContent = `Time Spent: ${formatMMSS(totalElapsedSeconds)}`;
+    // 考试中点过 Hide Timer 的话 timer-hidden 会一直留着，opacity:0 让更新后的
+    // 文字照样看不见，所以连它一起清掉
+    timerDisplay.classList.remove('timing-active', 'timer-overtime', 'timer-warning-10', 'timer-warning-5', 'timer-warning-1', 'timer-hidden');
+    timerDisplay.classList.add('timer-finished');
+
+    // 交卷后作答不能再改。用 readonly 不用 disabled——disabled 的文本没法
+    // 选中复制，而学生往往想把自己的答案复制出来跟标准答案对照
+    document.querySelectorAll('#testing-questions .answer-editor-input').forEach(el => {
+        el.readOnly = true;
+    });
+
+    // 标准答案交卷后才去后端拉——考试期间它根本没到过浏览器。
+    // ⚠️ 要【等】它把自评界面建好，才能数出有几道可打分的自评题、
+    // 决定是先让学生改卷（暂不亮分）还是直接亮结果，所以留住这个 Promise
+    const solutionsReady = revealSolutions(paperId);
+
+    // Hide Timer 和提交按钮不再需要
+    if (toggleTimerBtn) toggleTimerBtn.style.display = 'none';
+    if (submitBtn) submitBtn.style.display = 'none';
+
+    // ⚠️ 【不在这里展开页面外壳】。改卷阶段要保持和考试一样的专注布局——
+    //    页头、Test 标签、VERSION 选择器、导航栏、页脚、卷面头卡全收起，
+    //    屏幕上只剩「改卷提示 + 考卷」。展开外壳（退出专注模式、恢复 version /
+    //    Retake / 回顶）的活全挪到 finalizeExamResults：点了 Submit、要亮结果时，
+    //    外壳才和结果一起出现。没有可改的自评题时也走 finalizeExamResults，一样展开。
+
+    // 有【能打分】的自评题（录了 points 的）时，先进入"改卷"阶段：学生对着标准答案
+    // 自己打分，这期间【不亮任何分数】——自动分、班级平均、Scoring Detail、历次尝试
+    // 全等改完再一起出（见 finalizeExamResults）。没有可打分的自评题就直接亮结果。
+    solutionsReady.then(() => {
+        const markable = document.querySelectorAll('#testing-questions .self-assess-input').length;
+        if (markable > 0) {
+            enterMarkingHold(paperId, totalElapsedSeconds);
+        } else {
+            finalizeExamResults(paperId, totalElapsedSeconds);
+        }
+    });
+}
+
+// 把结果页滚到"导航栏刚好吸顶"那一点：先到 0 让吸顶导航栏回到文档流，再量它的自然位置
+function scrollToResultsTop() {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    const navBarEl = document.querySelector('.nav-bar');
+    if (navBarEl) {
+        window.scrollTo({ top: navBarEl.getBoundingClientRect().top + window.scrollY, behavior: 'auto' });
+    }
+}
+
+// 改卷阶段：学生对着标准答案自评，期间【不亮分】。放一个说明条 + "Reveal my results"，
+// 点了才把所有分数一起亮出来。只有存在【能打分】的自评题（录了 points）时才进这一步。
+function enterMarkingHold(paperId, totalElapsedSeconds) {
+    const container = document.getElementById('testing-questions');
+    if (!container || !container.parentNode) {
+        finalizeExamResults(paperId, totalElapsedSeconds);
+        return;
+    }
+
+    const existing = document.getElementById('exam-marking-hold');
+    if (existing) existing.remove();
+
+    // 改卷阶段把卷面头卡（#testing-header：卷名/题数/Retake）也藏起来，
+    // 等点了 Submit、finalizeExamResults 跑起来才跟结果一起出现。
+    // 用 body class 而不是 inline display——重置时一处清干净，不留残留样式
+    document.body.classList.add('exam-marking-mode');
+
+    const hold = document.createElement('div');
+    hold.id = 'exam-marking-hold';
+    hold.className = 'exam-marking-hold';
+    hold.innerHTML = `
+        <p class="exam-marking-hold-text">
+            <strong>Mark every question, then submit.</strong>
+            Compare each answer with the model answer and enter your mark above.
+            Submit stays locked until all are marked, and once you view your results
+            your marks are final — you can't change them.
+        </p>
+        <button type="button" class="exam-marking-hold-btn" disabled>Submit</button>
+    `;
+    container.parentNode.insertBefore(hold, container);
+
+    // 全部改完才能提交：没填完时按钮禁用。每次自评输入变化都会重新判断
+    // （updateSelfAssessedTotal 里调 syncMarkingHoldSubmit），这里先摆一次初始状态
+    syncMarkingHoldSubmit();
+
+    hold.querySelector('.exam-marking-hold-btn').addEventListener('click', function () {
+        if (this.disabled) return;
+        // 查看成绩后自评分锁死：所有输入设 readOnly，不能再改
+        document.querySelectorAll('#testing-questions .self-assess-input').forEach(input => {
+            input.readOnly = true;
+            input.classList.add('is-locked');
+        });
+        hold.remove();
+        finalizeExamResults(paperId, totalElapsedSeconds);
+    });
+
+    // 平滑滚到改卷说明条，别从答题位置硬跳到顶——配合 banner / 标准答案栏的
+    // 入场动画，"进入改卷"是滑进来的，不是瞬间跳过去。
+    // 放到下一帧：等 exam-marking-mode 藏掉卷面头卡、DOM 高度落定后再滚，位置才准
+    requestAnimationFrame(() => {
+        hold.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+}
+
+// 所有自评题都打了分了吗（每个 .self-assess-input 都有可解析的数值）
+function allSelfMarksFilled() {
+    const inputs = [...document.querySelectorAll('#testing-questions .self-assess-input')];
+    if (inputs.length === 0) return true;
+    return inputs.every(input => Number.isFinite(parseFloat(input.value)));
+}
+
+// 根据"是否全部改完"启用/禁用改卷说明条上的 Submit 按钮
+function syncMarkingHoldSubmit() {
+    const hold = document.getElementById('exam-marking-hold');
+    if (!hold) return;
+    const btn = hold.querySelector('.exam-marking-hold-btn');
+    if (!btn) return;
+    const ready = allSelfMarksFilled();
+    btn.disabled = !ready;
+    btn.title = ready ? '' : 'Mark every question above before you can submit';
+}
+
+// 结果页每道题的「得分/总分」徽标，放在题号旁的分值徽标【左边】。
+// mode='auto' 用云图标（自动判分），mode='self' 用铅笔图标（学生自评）——一眼区分两种判法。
+// 只在题目【录了 points】时才加：没有总分就没有 "X/10" 可言（分值徽标本身也只在有 points 时出现）。
+// 按得分占比给出色带：0–50% 红、>50–80% 橙、>80% 绿（对应 /10 的 0-5 / 6-8 / 9-10）。
+// 徽标和右侧题号导航共用这套色带
+function scoreBandClass(earned, max) {
+    if (!(max > 0)) return null;
+    const frac = earned / max;
+    if (frac <= 0.5) return 'score-low';    // 差 → 红
+    if (frac <= 0.8) return 'score-mid';    // 中 → 橙
+    return 'score-high';                     // 好 → 绿
+}
+
+// 把某题的得分色带同步到右侧题号导航的那个按钮：换成得分色，
+// 并清掉考试期间的「已答/标记」色（结果页不再保留那两种状态色）
+function setNavScoreBand(questionId, band) {
+    const nav = getQuestionNav();
+    if (!nav) return;
+    const btn = nav.querySelector(`[data-target-question="${questionId}"]`);
+    if (!btn) return;
+    btn.classList.remove('is-answered', 'is-flagged', 'is-score-low', 'is-score-mid', 'is-score-high');
+    if (band) btn.classList.add(`is-${band}`);
+}
+
+// 进结果页时统一清掉导航上考试期间的「已答/标记」色。
+// 有得分的题随后由 addEarnedBadge → setNavScoreBand 换上得分色；
+// 没得分的题（没录 points）就回到中性白，不再顶着考试中的绿/红
+function clearNavExamStates() {
+    const nav = getQuestionNav();
+    if (!nav) return;
+    nav.querySelectorAll('.exam-nav-item').forEach(btn => {
+        btn.classList.remove('is-answered', 'is-flagged');
+    });
+}
+
+function addEarnedBadge(block, earned, max, mode) {
+    if (!block) return;
+    const labelRow = block.querySelector('.question-label-row');
+    if (!labelRow) return;
+
+    // 重考/重算时先清掉旧的，避免叠加
+    labelRow.querySelectorAll('.question-earned-tag').forEach(el => el.remove());
+
+    const band = scoreBandClass(earned, max);   // 得分色带
+
+    const tag = document.createElement('span');
+    // is-auto / is-self 保留（图标区分判法）；颜色由 is-score-* 得分色带决定
+    tag.className = `question-earned-tag is-${mode}${band ? ` is-${band}` : ''}`;
+    const icon = mode === 'auto' ? 'fa-cloud' : 'fa-pencil';
+    tag.title = mode === 'auto' ? 'Auto-checked' : 'Self-marked';
+    tag.innerHTML = `<i class="fa-solid ${icon}"></i>${formatMark(earned)}/${formatMark(max)}`;
+
+    // 放在分值徽标左边；没有分值徽标（理论上不会，两者同条件）就放题号后
+    const pointsTag = labelRow.querySelector('.question-points-tag');
+    if (pointsTag) labelRow.insertBefore(tag, pointsTag);
+    else labelRow.appendChild(tag);
+
+    // 右侧题号导航联动同一得分色
+    setNavScoreBand(block.dataset.questionId, band);
+}
+
+// 数字显示：整数就整数，带小数留一位（7 而不是 7.0；7.5 保留）
+function formatMark(n) {
+    const v = Number(n) || 0;
+    return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+// 结果页给每道【自评题】加上「得分/总分」铅笔徽标。
+// ⚠️ 只加徽标、不删自评框——框在结果页由 CSS（body.exam-result-mode）藏掉，
+//    但 .self-assess-input 仍留在 DOM 里，collectSelfTotal / saveExamAttempt 照样读得到值。
+//    真删了这里的输入，自评分会在存尝试/算 Scoring Detail 时丢掉。
+function annotateSelfScores() {
+    document.querySelectorAll('#testing-questions .question-block').forEach(block => {
+        const input = block.querySelector('.self-assess-input');
+        if (!input) return;
+        const max = Number(input.dataset.maxPoints);
+        if (!Number.isFinite(max) || max <= 0) return;
+        let earned = parseFloat(input.value);
+        if (!Number.isFinite(earned)) earned = 0;
+        earned = Math.max(0, Math.min(earned, max));   // 夹在 [0, max]
+        addEarnedBadge(block, earned, max, 'self');
+    });
+}
+
+// 把考试 + 改卷期间收起的页面外壳一次性展开：退出专注模式（页头/Test 标签/
+// 导航栏/页脚），恢复 VERSION 切换、Retake、回顶按钮。这些在考试和改卷期间
+// 都收着，等结果出来才和结果一起放出来。
+function restoreExamShell() {
+    // true = 瞬间恢复骨架，不播展开动画（带过渡会把结果卡片一路往下推）
+    if (typeof exitExamFocusMode === 'function') exitExamFocusMode(true);
+
+    const versionWrap = document.getElementById('version-selector-wrap');
+    const backToTopBtn = document.getElementById('testing-back-to-top-btn');
+    const retakeBtn = document.getElementById('testing-retake-btn');
+    if (versionWrap) versionWrap.classList.remove('hide-during-exam');
+    if (backToTopBtn) backToTopBtn.style.display = 'inline-block';
+    if (retakeBtn) retakeBtn.style.display = 'inline-block';
+}
+
+// 亮出全部结果：判分 + 存这次尝试 + Scoring Detail（含班级平均）+ 用时 + 历次 + 揭示动画。
+// 从 revealExamResults 拆出来，因为它可能【延后】到学生改完卷才跑（见 enterMarkingHold）。
+function finalizeExamResults(paperId, totalElapsedSeconds) {
+    // 结果要出来了：把考试+改卷期间收起的外壳全展开（专注模式、VERSION、Retake、回顶），
+    // 再放出卷面头卡（exam-marking-mode）——外壳、卷面卡、结果卡片一起出现
+    restoreExamShell();
+    document.body.classList.remove('exam-marking-mode');
+
+    // 结果页刷新导航配色：先清掉考试期间的「已答/标记」色，
+    // 随后各题的得分色由 addEarnedBadge → setNavScoreBand 填上
+    clearNavExamStates();
+
+    // 自评题：把学生打的分变成题号旁的 "得分/总分" 铅笔徽标（自评框随后被 CSS 藏掉）。
+    // 自动判分题的云徽标在 gradeExamAnswers 里逐题加（要等判分结果）
+    annotateSelfScores();
+
+    // ⚠️ 用 Promise.resolve().then() 起手，把整条判分链隔在异步边界之外：万一
+    // gradeExamAnswers 返回了非 Promise，也只是被 .catch 兜住，绝不能让异常同步冒出来
+    // 把下面的 exam-result-mode（分析卡总开关）拦掉。判分挂了是小事，分析卡整块消失是大事
+    Promise.resolve()
+        .then(() => gradeExamAnswers(paperId))
+        .then(auto => { saveExamAttempt(paperId, auto); })
+        .catch(err => console.error('Grading pipeline failed:', err))
+        .finally(() => refreshScoringDetail(paperId));
+
+    // 用时跟判分互不依赖：没录用例、判分整个跳过时，用时照样要显示
+    applyTimeSpentStat(totalElapsedSeconds);
+
+    // 历次尝试的真实分数。接口没上线前显示 Coming soon 占位
+    loadPreviousAttempts(paperId);
+
+    // 结算状态：Your performance / Previous attempts / Scoring Detail 只在交卷后显示。
+    // 必须在测量滚动位置【之前】挂上——这几块一出现，页面高度和导航栏自然位置都会变
+    document.body.classList.add('exam-result-mode');
+
+    scrollToResultsTop();
+
+    // 分析板块淡入 + 进度条从 0 长出来。必须等页面真的到顶再触发（双层 rAF），
+    // 否则动画头几帧被滚动吃掉。播完把 class 去掉：动画含 transform，留着会让
+    // 后代 position:fixed 相对它定位。2200ms 必须大于 CSS 里最长那条动画
+    const analyticsGrid = document.querySelector('.exam-analytics-grid');
+    if (analyticsGrid) {
+        analyticsGrid.classList.remove('is-revealing');
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                analyticsGrid.classList.add('is-revealing');
+                setTimeout(() => analyticsGrid.classList.remove('is-revealing'), 2200);
+            });
+        });
+    }
+}
+
+// 提交整卷难度评分（1~5）。
+// ⚠️ 后端接口 POST /api/progress/exams/{paperId}/rate 【还没有】——见 HANDOFF 待办。
+//    没上线前这个 POST 会失败，评分暂时存不下；但【不阻塞结果页】（评分本就是可选的）。
+//    契约：body { rating: 1..5 }；user_id + paper_id 唯一，重复提交走 update（覆盖）。
+function submitPaperRating(paperId, rating) {
+    const token = getToken();
+    if (!token) return Promise.resolve(false);
+
+    return fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/rate`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ rating })
+    })
+        .then(res => res.ok)
+        .catch(error => {
+            console.error('Failed to submit paper rating:', error);
+            return false;
+        });
+}
+
+// 交卷和结果之间的中间屏：给整卷打个难度星，或跳过。给完/跳过后调 onDone()。
+//
+// 没登录（拿不到 token，评分存不下）就直接跳过这一步，不摆一个点了也白点的界面。
+// 评分是否 POST 成功都照样进结果——绝不因为一个可选评分卡住学生看不到成绩。
+function showPaperRatingStep(paperId, onDone) {
+    const finish = () => { if (typeof onDone === 'function') onDone(); };
+
+    if (!getToken()) { finish(); return; }   // 匿名用户：跳过评分
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'paper-rating-backdrop';
+
+    const card = document.createElement('div');
+    card.className = 'paper-rating-card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-label', 'Rate this test');
+
+    const h3 = document.createElement('h3');
+    h3.textContent = 'How hard was this test?';
+    card.appendChild(h3);
+
+    const sub = document.createElement('p');
+    sub.className = 'paper-rating-sub';
+    sub.textContent = 'Your rating helps show the paper’s difficulty to other students. Optional.';
+    card.appendChild(sub);
+
+    const starsWrap = document.createElement('div');
+    starsWrap.className = 'paper-rating-stars';
+
+    let chosen = 0;
+    const starEls = [];
+    const paint = upto => {
+        starEls.forEach((el, i) => el.classList.toggle('filled', i < upto));
+        starsWrap.className = 'paper-rating-stars' + (upto > 0 ? ` rating-level-${upto}` : '');
+    };
+
+    for (let i = 1; i <= 5; i++) {
+        const star = document.createElement('button');
+        star.type = 'button';
+        star.className = 'paper-rating-star';
+        star.innerHTML = '<i class="fa-solid fa-star"></i>';
+        star.title = `${i} star${i > 1 ? 's' : ''}`;
+        star.addEventListener('mouseenter', () => paint(i));
+        star.addEventListener('click', () => {
+            chosen = i;
+            paint(i);
+            submitBtn.disabled = false;
+        });
+        starEls.push(star);
+        starsWrap.appendChild(star);
+    }
+    starsWrap.addEventListener('mouseleave', () => paint(chosen));
+    card.appendChild(starsWrap);
+
+    const actions = document.createElement('div');
+    actions.className = 'paper-rating-actions';
+
+    const skipBtn = document.createElement('button');
+    skipBtn.type = 'button';
+    skipBtn.className = 'paper-rating-skip';
+    skipBtn.textContent = 'Skip';
+
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'paper-rating-submit';
+    submitBtn.textContent = 'Submit rating';
+    submitBtn.disabled = true;   // 没选星之前不能提交
+
+    actions.appendChild(skipBtn);
+    actions.appendChild(submitBtn);
+    card.appendChild(actions);
+
+    backdrop.appendChild(card);
+    document.body.appendChild(backdrop);
+
+    // 只关这一屏、进结果页。清理事件监听，别泄漏
+    let closed = false;
+    const close = () => {
+        if (closed) return;
+        closed = true;
+        document.removeEventListener('keydown', onKey);
+        backdrop.remove();
+        finish();
+    };
+    const onKey = e => {
+        if (e.key === 'Escape') close();          // Esc = 跳过
+        else if (e.key === 'Enter' && chosen) submitBtn.click();
+    };
+    document.addEventListener('keydown', onKey);
+
+    skipBtn.addEventListener('click', close);
+    submitBtn.addEventListener('click', () => {
+        if (!chosen) return;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving…';
+        // 存不下也照样进结果——评分是可选的，不该卡住成绩
+        submitPaperRating(paperId, chosen).finally(close);
+    });
+
+    // 打开就把焦点放到第一颗星，键盘用户能直接操作
+    requestAnimationFrame(() => starEls[0] && starEls[0].focus());
+}
+
 function loadTestingQuestions(paperId, paperTitle) {
     const header = document.getElementById('testing-header');
     const headerTitle = header ? header.querySelector('h2') : null;
@@ -926,6 +1356,12 @@ function loadTestingQuestions(paperId, paperTitle) {
         // 结算状态也要清掉，否则重考时 Your performance / Previous attempts
         // 会在还没开始考的时候就挂在那儿
         document.body.classList.remove('exam-result-mode');
+
+        // 改卷阶段的状态也清：说明条拆掉、卷面头卡的隐藏解除，
+        // 否则中途切走/重考时上一场的改卷状态会残留（头卡一直藏着）
+        document.body.classList.remove('exam-marking-mode');
+        const markingHold = document.getElementById('exam-marking-hold');
+        if (markingHold) markingHold.remove();
 
         // 卡片里的数字也要清。只摘掉 exam-result-mode 的话，
         // 上一场的分数还在 DOM 里躺着，下一次交卷判分失败时会原样露出来
@@ -1014,120 +1450,21 @@ function loadTestingQuestions(paperId, paperTitle) {
         submitBtn.addEventListener('click', () => {
             stopTestingTimer();
 
-            recordExamCompletion(header.dataset.currentPaperId);
+            const submittedPaperId = header.dataset.currentPaperId;
+            recordExamCompletion(submittedPaperId);
 
             const examStartTime = countdownEndTime - COUNTDOWN_TOTAL_SECONDS * 1000;
             const totalElapsedSeconds = Math.round((Date.now() - examStartTime) / 1000);
 
-            // 交卷后进入批改模式：banner 左边换成 "Correction"，
-            // 用时显示 + Retake 按钮留在右侧（h2 靠左，其余元素靠右，flex 自动分布）
-            header.classList.remove('exam-in-progress');
-            header.classList.add('exam-finished');
-            headerTitle.textContent = 'Correction';
-
-            timerDisplay.textContent = `Time Spent: ${formatMMSS(totalElapsedSeconds)}`;
-            // 修复：如果考试进行中点过 Hide Timer，timer-hidden 这个 class 会一直留着，
-            // 导致这里更新了文字内容，但因为 opacity:0 还是看不见，所以要连它一起清掉
-            timerDisplay.classList.remove('timing-active', 'timer-overtime', 'timer-warning-10', 'timer-warning-5', 'timer-warning-1', 'timer-hidden');
-            timerDisplay.classList.add('timer-finished');
-
-            // 交卷后作答不能再改。用 readonly 不用 disabled——
-            // disabled 的文本没法选中复制，而学生往往想把自己的答案
-            // 复制出来跟标准答案对照
-            document.querySelectorAll('#testing-questions .answer-editor-input').forEach(el => {
-                el.readOnly = true;
-            });
-
-            // 标准答案交卷后才去后端拉——考试期间它根本没到过浏览器。
-            // 顺带把大题的自评界面装起来。
-            // ⚠️ 以前这里是给已经渲染好的 .testing-answer 加 .show，
-            //    也就是答案早就在 DOM 里、只是 display:none 藏着
-            revealSolutions(header.dataset.currentPaperId);
-
-            // 交卷之后，Hide Timer 和提交按钮（原来的 Turned In）都不再需要，直接移除
-            toggleTimerBtn.style.display = 'none';
-            submitBtn.style.display = 'none';
-
-            // 考试已经结束，版本切换重新开放
-            if (versionWrap) versionWrap.classList.remove('hide-during-exam');
-
-            backToTopBtn.style.display = 'inline-block';
-            retakeBtn.style.display = 'inline-block';
-            // true = 瞬间恢复页面骨架，不播展开动画。
-            // 带过渡的话页头/导航栏/切换器会在 400ms 里长出最多 500px，
-            // 把下面的结果卡片一路往下推，看起来像页面在滑动
-            exitExamFocusMode(true);
-
-            // 交卷时把所有作答整体提交一次兜底。
-            // 平时是边打边存的，但最后 800ms 内敲的东西可能还在防抖里没发出去，
-            // 而且中途有请求失败的话这里能补上
-            // 这场考试结束了，清掉会话——否则刷新后又会被恢复成"考试中"
+            // 交卷立即做：持久化作答 + 结束会话。原来这两步在揭晓结果那段里，
+            // 现在提前——评分屏期间刷新页面也不该被恢复成"考试中"。
+            // flush 是兜底：最后 800ms 敲的东西可能还在防抖里没发出去
+            flushAllAnswers(submittedPaperId);
             clearExamSession();
 
-            flushAllAnswers(header.dataset.currentPaperId);
-
-            // 判分。放在 flush 之后——虽然判分读的是输入框里的当前值、
-            // 不依赖后端那份，但顺序上先保存再判分更符合直觉
-            gradeExamAnswers(header.dataset.currentPaperId);
-
-            // 用时跟判分【互不依赖】：这张卷子一条测试用例都没录、
-            // 判分整个跳过的时候，用时照样要显示出来
-            applyTimeSpentStat(totalElapsedSeconds);
-
-            // 挂上结算状态：Your performance 和 Previous attempts 这两块
-            // 只在交卷之后才显示。
-            // ⚠️ 必须在下面测量滚动位置【之前】做——这两块一出现，
-            // 页面高度和导航栏的自然位置都会变，先量后显示的话会跳错地方
-            document.body.classList.add('exam-result-mode');
-
-            // 交卷时人一般停在题目中间，结果在上面。瞬间跳过去。
-            //
-            // 目标位置不是页面最顶端，而是【导航栏刚好吸顶】的那一点：
-            // .nav-bar 是 position: sticky; top: 0，所以那一点就是它在
-            // 文档流里的自然位置。跳到这里的好处是页头（logo + Back to Home）
-            // 正好滚出视野，结果卡片占满屏幕，同时导航栏还在手边。
-            //
-            // 先跳到 0 再测量：导航栏这时候可能正吸在顶上，
-            // 直接读 getBoundingClientRect 拿到的是"吸住之后"的位置，不是自然位置。
-            // 归零之后它回到文档流里，量出来才准。
-            // 两次 scrollTo 在同一帧内完成，浏览器只会绘制最后那次，看不到中间状态。
-            window.scrollTo({ top: 0, behavior: 'auto' });
-
-            const navBarEl = document.querySelector('.nav-bar');
-            if (navBarEl) {
-                window.scrollTo({
-                    top: navBarEl.getBoundingClientRect().top + window.scrollY,
-                    behavior: 'auto'
-                });
-            }
-
-            // 分析板块交卷后重新出现：淡入 + 进度条从 0 长出来。
-            //
-            // ⚠️ 必须【等页面真的到顶了】再触发。跟 scrollTo 同一时刻加 class 的话，
-            // 浏览器这一帧既要处理滚动又要起动画，视觉上是"边跳边播"，
-            // 动画的头几帧被跳转吃掉了，显得仓促。
-            //
-            // 用 requestAnimationFrame 套两层：第一层等这一帧的样式和布局算完
-            // （滚动位置在这时才真正落定），第二层才加 class，动画从下一帧干净地起步。
-            // setTimeout(0) 也能凑效，但 rAF 跟浏览器的绘制节奏对齐，更稳。
-            const analyticsGrid = document.querySelector('.exam-analytics-grid');
-            if (analyticsGrid) {
-                analyticsGrid.classList.remove('is-revealing');
-
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        analyticsGrid.classList.add('is-revealing');
-
-                        // 播完把 class 去掉。动画里有 transform，animation-fill-mode
-                        // 会让最后一帧的 transform 永久留在元素上，而任何非 none 的
-                        // transform 都会让后代 position: fixed 相对它定位而不是相对视口
-                        // 2200ms：最后一条进度条的延迟 0.78s + 时长 1s = 1.78s，
-                        // 留出余量。这个数【必须大于 CSS 里最长的那条动画】，
-                        // 小了会把动画砍断——调动画时长时别忘了同步改这里
-                        setTimeout(() => analyticsGrid.classList.remove('is-revealing'), 2200);
-                    });
-                });
-            }
+            // 交卷 →〔难度评分，可跳过〕→ 结果。中间这一步像 Get Ready 之于开考。
+            // 揭晓结果整段搬进了 revealExamResults()，评分/跳过之后才跑
+            showPaperRatingStep(submittedPaperId, () => revealExamResults(submittedPaperId, totalElapsedSeconds));
         });
 
         retakeBtn.addEventListener('click', () => {
@@ -1539,10 +1876,23 @@ function revealSolutions(paperId) {
                 // 自动判分的题到此为止，分数由判分引擎给
                 if (isAutoGradedCategory(question.question_category)) return;
 
-                block.appendChild(buildSelfAssessment(question));
+                // 自评框放在【题号行和题干之间】，而不是追加到题块最底部——
+                // 改卷时评分入口紧跟题号，学生不用滚到最下面找
+                const selfBox = buildSelfAssessment(question);
+                const labelRow = block.querySelector('.question-label-row');
+                if (labelRow && labelRow.nextSibling) {
+                    block.insertBefore(selfBox, labelRow.nextSibling);
+                } else {
+                    block.appendChild(selfBox);
+                }
             });
 
             updateSelfAssessedTotal();
+
+            // Difficulty analysis 的星级：优先用整卷评分，回退到这份 /practice/
+            // 数据里每道题的 avg_rating 聚合。放在这里是因为【只有此刻】合法地
+            // 拿到了带评分的题目数据（考前拉 /practice/ 会泄露答案）
+            applyRealDifficulty(paperId, questions);
         })
         .catch(error => {
             console.error('Failed to load solutions:', error);
@@ -1650,6 +2000,9 @@ function buildSelfAssessment(question) {
 //    合成一个数字之后，那个数字既不是客观成绩也不是自评成绩，
 //    没有任何一句话能准确描述它是什么
 function updateSelfAssessedTotal() {
+    // 改卷阶段：每次自评分变化都重新判断能不能提交（放最前，不受下面 early return 影响）
+    syncMarkingHoldSubmit();
+
     const inputs = [...document.querySelectorAll('.self-assess-input')];
     if (inputs.length === 0) return;
 
@@ -1686,7 +2039,15 @@ function updateSelfAssessedTotal() {
         : '';
 
     note.textContent =
-        `Self-assessed: ${earned} / ${total} points${progress}. Not saved — refreshing clears it.`;
+        `Self-assessed: ${earned} / ${total} points${progress}.`;
+
+    // 自评分现在【会存】：更新最新一次尝试的 self 分（防抖），并刷新 Scoring Detail
+    // 下层的"You"。paperId 从考卷头上取（自评界面只在结算页出现，那时它是当前卷）
+    const paperId = document.getElementById('testing-header')?.dataset.currentPaperId;
+    if (paperId) {
+        pushSelfScoreUpdate(paperId);
+        refreshScoringDetail(paperId);
+    }
 }
 
 // ============================================================
@@ -1936,21 +2297,27 @@ function gradeExamAnswers(paperId) {
     if (typeof gradeQuestion !== 'function') {
         console.warn('Grading engine not loaded.');
         setNoAutoScore('Auto-checking is unavailable right now.');
-        return;
+        return Promise.resolve(null);
     }
 
     // 成绩卡片先进入"计算中"状态。Pyodide 首次要下 3~4MB，
     // 这段时间卡片上如果还挂着上一场的数字，会被当成本场的成绩
     setPerformanceCardPending(true);
 
-    fetch(`${APP_API_BASE}/api/questions/papers/${paperId}/test-cases`)
+    lastAutoScore = null;   // 本场自动分先清，算出来才填（Scoring Detail 的"You"要用）
+
+    // ⚠️ 必须 return 这条链：revealExamResults 拿它的返回值 .then() 去存尝试。
+    // 漏了 return 的话这里返回 undefined，调用方 undefined.then() 会抛 TypeError，
+    // 把 revealExamResults 拦在 exam-result-mode 之前——结果就是交卷后
+    // 题目还在、Correction 头也在，但分析卡整块不出现（排查过一次，别再删）
+    return fetch(`${APP_API_BASE}/api/questions/papers/${paperId}/test-cases`)
         .then(res => res.ok ? res.json() : null)
         .then(caseMap => {
             if (!caseMap || Object.keys(caseMap).length === 0) {
                 // 这张卷子一条测试用例都没录。这是【当前的常态】——
                 // 目前只有第 6 题有用例，其余卷子都会走到这里
                 setNoAutoScore('No questions on this paper are auto-checked yet.');
-                return;
+                return null;
             }
 
             const blocks = [...document.querySelectorAll('#testing-questions .question-block')];
@@ -1973,6 +2340,12 @@ function gradeExamAnswers(paperId) {
                 const textarea = block.querySelector('.answer-editor-input');
                 const code = textarea ? textarea.value : '';
 
+                // 这道题的权重：录了 points 就按 points，没录就 1 分/题（等权）。
+                // 自动分做成加权绝对分（auto_points / auto_max）而不是纯百分比平均，
+                // 是为了跟自评分（也是绝对分）能相加成总分，且录 points 后自动生效
+                const points = Number(block.dataset.points);
+                const weight = Number.isFinite(points) && points > 0 ? points : 1;
+
                 // 每道题一个"判分中"的占位
                 const panel = document.createElement('div');
                 panel.className = 'grade-panel is-pending';
@@ -1991,7 +2364,12 @@ function gradeExamAnswers(paperId) {
                     gradeQuestion(code, cases)
                         .then(result => {
                             renderGradeResult(panel, result);
-                            return result;
+                            // 结果页题号旁的「得分/总分」云徽标。只在录了 points 时加
+                            // （没 points 就没绝对总分）；没作答/跳过的题不加
+                            if (Number.isFinite(points) && points > 0 && result && !result.skipped) {
+                                addEarnedBadge(block, Math.round(result.score / 100 * points), points, 'auto');
+                            }
+                            return { result, weight };
                         })
                         .catch(error => {
                             console.error('Grading failed:', error);
@@ -2005,21 +2383,30 @@ function gradeExamAnswers(paperId) {
             // 全部判完再算总分。
             // 用 Promise.all 而不是逐题累加：逐题累加的话总分会一格一格往上跳，
             // 而且中途的数字是没有意义的"半场比分"
-            return Promise.all(jobs).then(results => {
-                const valid = results.filter(r => r && !r.skipped);
+            return Promise.all(jobs).then(entries => {
+                const valid = entries.filter(e => e && e.result && !e.result.skipped);
                 if (valid.length === 0) {
                     // 有用例，但没有一道题算出结果——通常是这几道题都没作答
                     setNoAutoScore('Nothing to auto-check — none of the auto-checked questions were answered.');
-                    return;
+                    return null;
                 }
 
-                // 按题平均。每道题权重相同——题内部的用例权重已经在
-                // gradeQuestion 里折算过了
-                const overall = Math.round(
-                    valid.reduce((sum, r) => sum + r.score, 0) / valid.length
-                );
+                // 加权绝对分：每题 (通过率 × 权重) 累加。题内部的用例权重已经在
+                // gradeQuestion 里折算进 result.score（0~100）了
+                let autoPoints = 0;
+                let autoMax = 0;
+                valid.forEach(e => {
+                    autoPoints += (e.result.score / 100) * e.weight;
+                    autoMax += e.weight;
+                });
 
+                const overall = Math.round(autoPoints / autoMax * 100);
                 applyRealScore(overall, valid.length);
+
+                lastAutoScore = { points: autoPoints, max: autoMax };   // 供 Scoring Detail 的"You"
+
+                // 交给调用方（revealExamResults）去存这次尝试
+                return { autoPoints, autoMax, gradedCount: valid.length };
             });
         })
         .catch(error => {
@@ -2041,6 +2428,10 @@ function setPerformanceCardPending(pending) {
 // 走不下去——比如新换的这张卷子没录用例——卡片一显示出来，
 // 挂着的还是【上一场】的分数，而它看起来跟本场成绩没有任何区别。
 function resetPerformanceCard() {
+    // 重考/换卷是新的一场，清掉本场成绩状态，别让上一场的自动分/尝试记录串场
+    currentAttemptPaperId = null;
+    lastAutoScore = null;
+
     const card = document.querySelector('.exam-analytics-card.is-primary');
     if (!card) return;
 
@@ -2049,24 +2440,36 @@ function resetPerformanceCard() {
     // 两条说明文字都是动态插进去的，直接删掉
     card.querySelectorAll('.exam-score-note, .exam-self-score').forEach(el => el.remove());
 
-    // 分数和用时回到 skeleton.html 里的初始状态："—"、不带单位、
-    // 不带 data-real-stat。这两格的真值分别由 applyRealScore /
-    // applyTimeSpentStat 在交卷时填
-    card.querySelectorAll('.exam-stat[data-real-stat]').forEach(stat => {
-        stat.removeAttribute('data-real-stat');
-    });
-
     const stats = card.querySelectorAll('.exam-stat');
     const scoreValue = stats[0] && stats[0].querySelector('.exam-stat-value');
     if (scoreValue) scoreValue.textContent = '—';
 
+    // 用时那格回到初始："—" + 去掉 data-real-stat（applyTimeSpentStat 交卷时再置回）。
+    // ⚠️ 只清用时这一格，【不能】用 querySelectorAll('[data-real-stat]') 全清——
+    //    Ranking 那格的 data-real-stat 是常驻的（它永远是真数据，不是每场重置的），
+    //    全清会让它在下一场被 has-real-score 的 CSS 加上 "(sample)"
     const timeStat = stats[stats.length - 1];
     if (timeStat) {
+        timeStat.removeAttribute('data-real-stat');
         const timeValue = timeStat.querySelector('.exam-stat-value');
         const timeLabel = timeStat.querySelector('.exam-stat-label');
         if (timeValue) timeValue.textContent = '—';
         if (timeLabel) timeLabel.textContent = 'Time spent';
     }
+
+    // Ranking 回到 "—"（data-real-stat 保留），真值由 applyRanking 交卷后填
+    const rankingValue = card.querySelector('[data-ranking-value]');
+    if (rankingValue) rankingValue.textContent = '—';
+
+    // You/Global 总体对比条回到空（0% 宽、"—"），真值由 applyOverallComparison 填
+    card.querySelectorAll('[data-overall-you-fill], [data-overall-global-fill]')
+        .forEach(fill => { fill.style.width = '0%'; });
+    card.querySelectorAll('[data-overall-you-num], [data-overall-global-num]')
+        .forEach(num => { num.textContent = '—'; });
+
+    // 全体均分那句话（在 Difficulty 卡里）回到隐藏
+    const globalNote = document.querySelector('[data-global-average-note]');
+    if (globalNote) { globalNote.hidden = true; globalNote.textContent = ''; }
 }
 
 // 判不出分的时候，明确说出来。
@@ -2092,12 +2495,13 @@ function setNoAutoScore(message) {
     note.textContent = message;
 }
 
-// 把真实总分填进成绩卡片。
+// 把真实的【自动判分】总分填进 Your score 那一格。
 //
-// ⚠️ 只有 Your score 是真的。同一张卡上的 Ranking 和 Class average
-// 仍然是编的——它们要跨用户数据，一个人考试算不出排名和班级平均。
-// 所以这两项加上 data-mock-value 标记，样式上压暗，
-// 免得学生以为整张卡都是自己的真实成绩
+// Ranking 和 You/Global 对比条现在都是真的（分别由 applyRanking /
+// applyOverallComparison 从后端填）——这张卡不再有编的数字。
+// 注意：这里只管 "Your score" 那一格（=自动判分分数），对比条是【总体】
+// （自动+自评），归 applyOverallComparison 管，别在这里动它，否则会把
+// 总体条错误地覆盖成纯自动分。
 function applyRealScore(score, gradedCount) {
     setPerformanceCardPending(false);
 
@@ -2111,12 +2515,6 @@ function applyRealScore(score, gradedCount) {
     if (scoreEl) {
         scoreEl.innerHTML = `${score}<span class="exam-stat-unit">%</span>`;
     }
-
-    // 对比条里"You"那条也跟着走
-    const youFill = card.querySelector('.exam-compare-fill.is-you');
-    const youNum = card.querySelector('.exam-compare-row:first-child .exam-compare-num');
-    if (youFill) youFill.style.width = `${score}%`;
-    if (youNum) youNum.textContent = `${score}%`;
 
     // 说明这个分数是怎么来的。不写的话学生不知道
     // "为什么只算了 1 道题" —— 没录测试用例的题是不参与判分的
@@ -2178,6 +2576,522 @@ function applyTimeSpentStat(totalElapsedSeconds) {
     //    把 data-mock 从整张卡挪到卡里确实是假的那几块（Ranking、班级对比条），
     //    否则关掉 mock 开关会连 Your score 和 Time spent 这两个真数字一起藏了
     target.setAttribute('data-real-stat', 'true');
+}
+
+// 把这张卷子的【真实难度】填进 Difficulty analysis 卡的星级。
+//
+// 数据来源：交卷后拉的 /practice/ 里每道题的 avg_rating / rating_count
+// （学生平时在 Practice/Revision 给题打的星，见 buildQuestionBlock 的评分入口）。
+// 按打分人数加权：被 20 人评过的题比只被 1 人评过的更有发言权——
+// 等价于把所有人的原始打分汇到一起求平均，而不是先按题平均再平均。
+//
+// ⚠️ 只有【交卷后】能算。带评分的数据在 /practice/ 里，考试期间走的是
+//    /testing/（不含答案也不含评分）；考前去拉 /practice/ 会把标准答案
+//    一起泄露。所以 Difficulty 卡是 is-result-only，交卷后才出现。
+//    考前也想显示难度，得后端单开一个只返聚合难度、不含答案的接口——
+//    那是另一件事，见 HANDOFF 待办。
+function applyRealDifficulty(paperId, questions) {
+    const starsBox = document.querySelector('.exam-difficulty-stars');
+    if (!starsBox) return;
+
+    // Hard topics 用本卷各题的 topic + 单题评分算，跟星级的来源无关，先渲染
+    renderHardTopics(questions);
+
+    // 先试【整卷评分】聚合——学生在交卷后的评分步骤给的（见 showPaperRatingStep），
+    // 这是难度的首选来源。接口没上线（404）/ 没人评过，就回退到【按题评分】的聚合。
+    // 两个来源都是真数据，谁都不编；整卷接口一上线且有人评过，卡片自动切到它。
+    // ⚠️ GET /api/progress/exams/{paperId}/rating 【还没有】——见 HANDOFF 待办。
+    fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/rating`)
+        .then(res => res.ok ? res.json() : null)
+        .then(agg => {
+            const count = agg ? Number(agg.rating_count) || 0 : 0;
+            if (count > 0) {
+                renderDifficulty(Number(agg.avg_rating), count, 'this test');
+            } else {
+                applyDifficultyFromQuestions(questions);
+            }
+        })
+        .catch(() => applyDifficultyFromQuestions(questions));
+}
+
+// 结果页 "Hard topics"：把本卷各题按【知识点】(topic) 分组，用单题难度评分给知识点
+// 排序，最难的几个就是 hard topics。数据全真：topic 是 admin 录的，评分是学生在
+// Practice 给单题打的星（Question_Ratings），/practice/{paperId} 一起带回来了。
+//
+// ⚠️ 只有【有评分】的知识点才能称为 "hard"——没有单题评分就无从判断难易，
+//    那样整块（小标题 + 标签）由 JS 隐藏，绝不摆一个凭空的"难点"。
+function renderHardTopics(questions) {
+    const tagsBox = document.querySelector('.exam-topic-tags');
+    if (!tagsBox) return;
+    const card = tagsBox.closest('.exam-analytics-card');
+    const subhead = card ? card.querySelector('.exam-subhead') : null;
+
+    const hide = () => {
+        tagsBox.style.display = 'none';
+        if (subhead) subhead.style.display = 'none';
+    };
+    const show = () => {
+        tagsBox.style.removeProperty('display');
+        if (subhead) subhead.style.removeProperty('display');
+    };
+
+    // 按 topic 聚合评分：难度 = sum(avg×n) / sum(n)，权重是打分人数
+    const byTopic = new Map();
+    (questions || []).forEach(q => {
+        const topic = (q.topic || '').trim();
+        const n = Number(q.rating_count) || 0;
+        const avg = Number(q.avg_rating);
+        if (!topic || n <= 0 || !isFinite(avg)) return;
+        const cur = byTopic.get(topic) || { sum: 0, count: 0 };
+        cur.sum += avg * n;
+        cur.count += n;
+        byTopic.set(topic, cur);
+    });
+
+    // 没有一个带评分的知识点：不摆假的，整块藏掉
+    if (byTopic.size === 0) { hide(); return; }
+
+    const ranked = [...byTopic.entries()]
+        .map(([topic, s]) => ({ topic, difficulty: s.sum / s.count, count: s.count }))
+        .sort((a, b) => b.difficulty - a.difficulty)
+        .slice(0, 4);   // 最多 4 个，避免铺满
+
+    tagsBox.innerHTML = '';
+    ranked.forEach(t => {
+        const span = document.createElement('span');
+        span.textContent = t.topic;
+        // tooltip 是真实平均难度，不再是编的"X% 学生做错"
+        span.setAttribute('data-tip',
+            `Rated ${t.difficulty.toFixed(1)}/5 difficulty from ${t.count} rating${t.count > 1 ? 's' : ''}.`);
+        tagsBox.appendChild(span);
+    });
+    show();
+}
+
+// 回退来源：把本卷各题的 avg_rating 按打分人数加权平均。
+// 被 20 人评过的题比只被 1 人评过的更有发言权——等价于把所有原始打分
+// 汇到一起求平均，而不是先按题平均再平均
+function applyDifficultyFromQuestions(questions) {
+    let ratingSum = 0;
+    let ratingCount = 0;
+    (questions || []).forEach(q => {
+        const n = Number(q.rating_count) || 0;
+        const avg = Number(q.avg_rating);
+        if (n > 0 && isFinite(avg)) {
+            ratingSum += avg * n;
+            ratingCount += n;
+        }
+    });
+    if (ratingCount === 0) {
+        renderDifficulty(null, 0, null);   // 一条评分都没有：不摆假星
+        return;
+    }
+    renderDifficulty(ratingSum / ratingCount, ratingCount, 'these questions');
+}
+
+// 把难度画成星级 + 一句真话注脚。mean 为 null（没有评分）时清空、只留说明。
+// subject 说明"评的是谁"：整卷评分 = "this test"，按题回退 = "these questions"
+function renderDifficulty(mean, ratingCount, subject) {
+    const starsBox = document.querySelector('.exam-difficulty-stars');
+    if (!starsBox) return;
+    const card = starsBox.closest('.exam-analytics-card');
+    // 每次交卷重算：先清掉上一次留下的真数据说明，避免叠加
+    if (card) card.querySelectorAll('.exam-difficulty-real-note').forEach(el => el.remove());
+
+    const addNote = text => {
+        if (!card) return;
+        const note = document.createElement('p');
+        note.className = 'exam-analytics-note exam-difficulty-real-note';
+        note.textContent = text;
+        starsBox.insertAdjacentElement('afterend', note);
+    };
+
+    if (mean == null || !(ratingCount > 0)) {
+        starsBox.innerHTML = '';
+        starsBox.removeAttribute('title');
+        addNote('No difficulty ratings yet for this paper.');
+        return;
+    }
+
+    // 四舍五入到半星
+    const rounded = Math.round(mean * 2) / 2;
+    const full = Math.floor(rounded);
+    const half = rounded - full === 0.5;
+    const empty = 5 - full - (half ? 1 : 0);
+
+    let html = '';
+    for (let i = 0; i < full; i++) html += '<i class="fa-solid fa-star"></i>';
+    if (half) html += '<i class="fa-solid fa-star-half-stroke"></i>';
+    for (let i = 0; i < empty; i++) html += '<i class="fa-regular fa-star"></i>';
+    starsBox.innerHTML = html;
+    starsBox.setAttribute('title', `${mean.toFixed(1)} out of 5`);
+
+    const who = subject ? ` for ${subject}` : '';
+    addNote(`Average difficulty ${mean.toFixed(1)} from ${ratingCount === 1 ? '1 rating' : `${ratingCount} ratings`}${who}.`);
+}
+
+// 历次尝试的【真实分数】。交卷后拉，接口没上线/没登录就摆 Coming soon 占位。
+//
+// 接口：GET /api/progress/exams/{paperId}/attempts（带 Bearer token）→
+//   [{ attempt_no, auto_points, auto_max, self_points, self_max, completed_at }, ...]
+// 存绝对分值不存百分比（题目集一变旧百分比没法回溯）；前端算总分百分比。
+function loadPreviousAttempts(paperId) {
+    const list = document.querySelector('.exam-analytics-card .exam-attempts');
+    if (!list) return;
+
+    // 接口还没上线（或没登录 / 请求失败）：摆 Coming soon 占位，语气跟考卷
+    // 说明里那条 "Your best attempt is recorded (Coming soon)" 保持一致。
+    // 不再整卡隐藏——隐藏会在分析网格里留个突兀的空位
+    const comingSoon = () => renderAttemptsPlaceholder(list, 'Previous attempts will show here.', 'Coming soon');
+    // 接口在、但这人确实没考过：诚实空态，不是 Coming soon
+    const empty = () => renderAttemptsPlaceholder(list, 'No previous attempts yet.', null);
+
+    const token = localStorage.getItem('csci1100_auth_token');
+    if (!token) { comingSoon(); return; }   // 没登录，拿不到"我的历史"
+
+    fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/attempts`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => {
+            if (res.status === 404) return 'no-endpoint';   // 接口还没做
+            return res.ok ? res.json() : 'error';
+        })
+        .then(data => {
+            // 404 / 其它错误：当"功能还没上线"处理，Coming soon。
+            // 【不】在这里编数字——宁可占位也不假装有历史
+            if (data === 'no-endpoint' || data === 'error') { comingSoon(); return; }
+            if (!Array.isArray(data) || data.length === 0) { empty(); return; }
+            renderPreviousAttempts(list, data);
+        })
+        .catch(() => comingSoon());   // 网络失败也当接口没上线
+}
+
+// 占位/空态：把时间线列表藏掉，改在下面摆一行说明。
+// tag 非空时（Coming soon）追加一个跟考卷说明同款的徽标
+function renderAttemptsPlaceholder(list, text, tag) {
+    const card = list.closest('.exam-analytics-card');
+    list.innerHTML = '';
+    list.style.display = 'none';   // 空态不显示时间线的竖线和圆点
+    if (!card) return;
+
+    card.querySelectorAll('.exam-attempt-placeholder').forEach(el => el.remove());
+
+    const p = document.createElement('p');
+    p.className = 'exam-analytics-note exam-attempt-placeholder';
+    p.textContent = text;
+    if (tag) {
+        p.appendChild(document.createTextNode(' '));
+        const badge = document.createElement('span');
+        badge.className = 'upcoming-tag';
+        badge.textContent = tag;
+        p.appendChild(badge);
+    }
+    list.insertAdjacentElement('afterend', p);
+}
+
+function renderPreviousAttempts(list, attempts) {
+    // 从占位/空态切回真数据：清掉占位说明，恢复时间线列表
+    const card = list.closest('.exam-analytics-card');
+    if (card) card.querySelectorAll('.exam-attempt-placeholder').forEach(el => el.remove());
+    list.style.removeProperty('display');
+    list.innerHTML = '';
+
+    // 按完成时间升序：最后一次在最下面，跟 Attempt 编号方向一致
+    const rows = attempts.slice().sort((a, b) =>
+        String(a.completed_at).localeCompare(String(b.completed_at)));
+
+    let prevPct = null;
+    rows.forEach((att, i) => {
+        // Previous attempts 显示【总分】= 自动判分 + 自评 的绝对分之和 / 总满分。
+        // 自评还没录 points 时 self_max=0，总分就只含自动分——不会因此少算
+        const totalPoints = (Number(att.auto_points) || 0) + (Number(att.self_points) || 0);
+        const totalMax = (Number(att.auto_max) || 0) + (Number(att.self_max) || 0);
+        const pct = totalMax > 0 ? Math.round(totalPoints / totalMax * 100) : null;
+
+        const li = document.createElement('li');
+
+        const no = document.createElement('span');
+        no.className = 'exam-attempt-no';
+        no.textContent = `Attempt ${att.attempt_no != null ? att.attempt_no : i + 1}`;
+        li.appendChild(no);
+
+        const score = document.createElement('span');
+        score.className = 'exam-attempt-score';
+        // 分数算不出（没有任何满分）时显示 "—"，不编一个数字
+        score.textContent = pct == null ? '—' : `${pct}%`;
+        li.appendChild(score);
+
+        const date = document.createElement('span');
+        date.className = 'exam-attempt-date';
+        date.textContent = formatLastAttempt(att.completed_at) || '';
+        li.appendChild(date);
+
+        // 跟上一次比的涨跌。两次都有百分比、且不相等才显示
+        if (pct != null && prevPct != null && pct !== prevPct) {
+            const up = pct > prevPct;
+            const delta = document.createElement('span');
+            delta.className = 'exam-attempt-delta' + (up ? '' : ' is-down');
+            delta.innerHTML = `<i class="fa-solid fa-arrow-${up ? 'up' : 'down'}"></i> ${Math.abs(pct - prevPct)}%`;
+            li.appendChild(delta);
+        }
+        if (pct != null) prevPct = pct;
+
+        list.appendChild(li);
+    });
+}
+
+// ============================================================
+// 成绩落库 & Scoring Detail（你 vs 所有人）
+// ============================================================
+
+// 本场是否已存进后端（存了才谈得上后续用自评分去更新它）。存 paperId：
+// 重考/换卷时用它判断"最新那次"是不是当前这场
+let currentAttemptPaperId = null;
+// 本场自动分 {points, max}，供 Scoring Detail 的"You"用。gradeExamAnswers 算完时填
+let lastAutoScore = null;
+
+// 从自评输入框汇总 {selfPoints, selfMax}。没录 points 的题不出输入框，
+// 所以一道都没录时 selfMax = 0
+function collectSelfTotal() {
+    let selfPoints = 0;
+    let selfMax = 0;
+    document.querySelectorAll('.self-assess-input').forEach(input => {
+        const max = Number(input.dataset.maxPoints);
+        if (!Number.isFinite(max)) return;
+        selfMax += max;
+        const v = parseFloat(input.value);
+        if (Number.isFinite(v)) selfPoints += v;
+    });
+    return { selfPoints, selfMax };
+}
+
+// 交卷后存一次尝试。auto 是 gradeExamAnswers 的结果（可能为 null）。
+// 只有【确实有东西可评分】才存（auto_max>0 或 self_max>0）——否则这张卷子
+// 既没自动判分题也没录自评 points，不留 0/0 的废记录，Previous attempts 保持占位。
+function saveExamAttempt(paperId, auto) {
+    const token = getToken();
+    if (!token) return;
+
+    const autoPoints = auto ? auto.autoPoints : 0;
+    const autoMax = auto ? auto.autoMax : 0;
+    const { selfPoints, selfMax } = collectSelfTotal();
+
+    if (autoMax <= 0 && selfMax <= 0) {
+        currentAttemptPaperId = null;   // 没有可评分内容，不记这一次
+        return;
+    }
+
+    fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/attempts`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_points: autoPoints, auto_max: autoMax, self_points: selfPoints, self_max: selfMax })
+    })
+        .then(res => res.ok ? res.json() : null)
+        .then(saved => {
+            if (!saved) return;
+            currentAttemptPaperId = String(paperId);   // 之后自评改动可 PUT 更新这一次
+            loadPreviousAttempts(paperId);             // 把这次纳入历次列表
+            refreshScoringDetail(paperId);             // "所有人"里也把这次算进去了
+        })
+        .catch(err => console.error('Failed to save attempt:', err));
+}
+
+// 自评分改动后，把最新一次尝试的 self 分补上（自评是交卷后才填的，POST 时还没有）。
+// 防抖 600ms：学生连续调分时不必每次打后端
+let selfUpdateTimer = null;
+function pushSelfScoreUpdate(paperId) {
+    const token = getToken();
+    if (!token || currentAttemptPaperId !== String(paperId)) return;
+    const { selfPoints, selfMax } = collectSelfTotal();
+    if (selfMax <= 0) return;   // 没录 points，没有自评分可存
+
+    clearTimeout(selfUpdateTimer);
+    selfUpdateTimer = setTimeout(() => {
+        fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/attempts/latest/self`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ self_points: selfPoints, self_max: selfMax })
+        })
+            .then(() => { loadPreviousAttempts(paperId); refreshScoringDetail(paperId); })
+            .catch(err => console.error('Failed to update self score:', err));
+    }, 600);
+}
+
+// 拉全体平均（公开接口，不带 token），再渲染 Scoring Detail 卡
+// + Your performance 的 You/Global 总体对比条 + 全体均分那句话。
+// 失败就用 null 渲染——所有"全体"数字显示 "—" / 隐藏，不编数字。
+function refreshScoringDetail(paperId) {
+    fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/score-stats`)
+        .then(res => res.ok ? res.json() : null)
+        .then(stats => {
+            renderScoringDetail(stats);
+            applyOverallComparison(stats);
+            applyGlobalAverageNote(stats);
+        })
+        .catch(() => {
+            renderScoringDetail(null);
+            applyOverallComparison(null);
+            applyGlobalAverageNote(null);
+        });
+
+    // Ranking 走单独的鉴权接口（要知道"你"是谁），跟 score-stats 并行拉
+    applyRanking(paperId);
+}
+
+// 本场"总体"得分率 =（自动得分+自评得分）/（自动满分+自评满分）。
+// 两边满分都为 0（没自动判、也没录自评分值）时返回 null——无从算起
+function computeOverallYou() {
+    const auto = lastAutoScore || { points: 0, max: 0 };
+    const { selfPoints, selfMax } = collectSelfTotal();
+    const totalMax = (auto.max || 0) + (selfMax || 0);
+    if (totalMax <= 0) return null;
+    return Math.round(((auto.points || 0) + (selfPoints || 0)) / totalMax * 100);
+}
+
+// Your performance 卡里的 You / Global 总体对比条。
+// You 用本场现算（computeOverallYou），Global 用 score-stats 的 overall_avg_pct。
+function applyOverallComparison(stats) {
+    const card = document.querySelector('.exam-analytics-card.is-primary');
+    if (!card) return;
+
+    const youPct = computeOverallYou();
+    const globalPct = stats && stats.overall_avg_pct != null ? Number(stats.overall_avg_pct) : null;
+
+    const setBar = (fillSel, numSel, pct) => {
+        const fill = card.querySelector(fillSel);
+        const num = card.querySelector(numSel);
+        if (fill) fill.style.width = `${pct == null ? 0 : pct}%`;
+        if (num) num.textContent = pct == null ? '—' : `${pct}%`;
+    };
+    setBar('[data-overall-you-fill]', '[data-overall-you-num]', youPct);
+    setBar('[data-overall-global-fill]', '[data-overall-global-num]', globalPct);
+}
+
+// Difficulty 卡里那句话：改成真实的全体平均分。没有全体数据就整句隐藏。
+function applyGlobalAverageNote(stats) {
+    const note = document.querySelector('[data-global-average-note]');
+    if (!note) return;
+
+    const pct = stats && stats.overall_avg_pct != null ? Number(stats.overall_avg_pct) : null;
+    const count = stats ? Number(stats.overall_count) || 0 : 0;
+
+    if (pct == null || count === 0) {
+        note.hidden = true;
+        note.textContent = '';
+        return;
+    }
+    note.hidden = false;
+    note.textContent = count === 1
+        ? `Global average: ${pct}% (1 student so far).`
+        : `Global average: ${pct}% across ${count} students.`;
+}
+
+// Ranking（真实百分位）。需要 token——是"你"在全体里的位次。
+// out_of<2（只有你一个考生）或 top_percent 为 null（这次没有可计分内容）→ 显示 "—"，不编排名。
+function applyRanking(paperId) {
+    const el = document.querySelector('[data-ranking-value]');
+    if (!el) return;
+
+    const token = getToken();
+    if (!token) { el.textContent = '—'; return; }
+
+    fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/my-ranking`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.ok ? res.json() : null)
+        .then(r => {
+            if (!r || r.top_percent == null || Number(r.out_of) < 2) {
+                el.textContent = '—';
+                el.title = (r && Number(r.out_of) < 2)
+                    ? 'Not enough students have taken this paper yet' : '';
+                return;
+            }
+            el.innerHTML = `Top ${Number(r.top_percent)}<span class="exam-stat-unit">%</span>`;
+            el.title = `Rank ${r.rank} of ${r.out_of}`;
+        })
+        .catch(() => { el.textContent = '—'; });
+}
+
+// Scoring Detail 卡：两层，各是"你 vs 所有人"。
+//   上层 = 自动判分，下层 = 自评。
+// "你"用本场分数（lastAutoScore / 自评输入框现值），"所有人"用 score-stats。
+function renderScoringDetail(stats) {
+    const container = document.querySelector('[data-scoring-detail]');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const autoYou = lastAutoScore && lastAutoScore.max > 0
+        ? Math.round(lastAutoScore.points / lastAutoScore.max * 100) : null;
+    const { selfPoints, selfMax } = collectSelfTotal();
+    const selfYou = selfMax > 0 ? Math.round(selfPoints / selfMax * 100) : null;
+
+    const autoEveryone = stats && stats.auto_avg_pct != null ? Number(stats.auto_avg_pct) : null;
+    const selfEveryone = stats && stats.self_avg_pct != null ? Number(stats.self_avg_pct) : null;
+    const autoCount = stats ? Number(stats.auto_count) || 0 : 0;
+    const selfCount = stats ? Number(stats.self_count) || 0 : 0;
+
+    container.appendChild(buildScoringLayer(
+        'Auto-checked', autoYou, autoEveryone, autoCount,
+        'No auto-checked questions on this paper yet.'));
+    container.appendChild(buildScoringLayer(
+        'Self-marked', selfYou, selfEveryone, selfCount,
+        'Self-marking opens once a mark value (points) is set on these questions.'));
+}
+
+// 一层：标题 + You / Everyone 两条对比条（复用 Your performance 卡的 .exam-compare 样式）。
+// 你和所有人都没有数据时，整层只显示一句说明，不摆空条。
+function buildScoringLayer(title, youPct, everyonePct, everyoneCount, emptyMsg) {
+    const layer = document.createElement('div');
+    layer.className = 'scoring-layer';
+
+    const head = document.createElement('div');
+    head.className = 'scoring-layer-head';
+    head.textContent = title;
+    layer.appendChild(head);
+
+    // 这一层完全没数据（本场没这类题、别人也没有）：一句诚实说明代替空条
+    if (youPct == null && everyonePct == null) {
+        const note = document.createElement('p');
+        note.className = 'exam-analytics-note';
+        note.textContent = emptyMsg;
+        layer.appendChild(note);
+        return layer;
+    }
+
+    layer.appendChild(buildCompareRow('You', youPct, true));
+
+    // "Global"（全体平均）：按要求恒显示 "Global"，不再加 "(only you so far)" 提示。
+    // ⚠️ 副作用：只有你一人考过时，Global 那条其实就是你自己的分——数字不假
+    //    （确实是现有全体的平均），但会让人以为背后有一群人。everyoneCount 仍可用于
+    //    以后需要小样本判断时（比如少于 N 人干脆不显示 Global 条）
+    layer.appendChild(buildCompareRow('Global', everyonePct, false));
+
+    return layer;
+}
+
+function buildCompareRow(label, pct, isYou) {
+    const row = document.createElement('div');
+    row.className = 'exam-compare-row';
+
+    const l = document.createElement('span');
+    l.className = 'exam-compare-label';
+    l.textContent = label;
+    row.appendChild(l);
+
+    const track = document.createElement('div');
+    track.className = 'exam-compare-track';
+    const fill = document.createElement('div');
+    fill.className = 'exam-compare-fill' + (isYou ? ' is-you' : '');
+    fill.style.width = `${pct == null ? 0 : pct}%`;
+    track.appendChild(fill);
+    row.appendChild(track);
+
+    const num = document.createElement('span');
+    num.className = 'exam-compare-num';
+    num.textContent = pct == null ? '—' : `${pct}%`;
+    row.appendChild(num);
+
+    return row;
 }
 
 // 把判分结果画出来

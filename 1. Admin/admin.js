@@ -98,9 +98,83 @@ function showToast(message, isError = false) {
 
 // 整个 Admin App 只在密钥验证通过之后才初始化一次，避免重复绑定监听器
 let adminAppInitialized = false;
+// ============================================================
+// 课程上下文（全局）
+// ============================================================
+// course 是贯穿题库 / 试卷 / Cribsheet 的作用域。当前选中的课程存 localStorage，
+// 【同步可读】——各 section 初始化时立刻能拿到，不必等下拉框那个异步填充。
+// 下拉里"有哪些课程"才是异步的（从已有试卷的 course 去重而来）。
+const ADMIN_COURSE_STORAGE = 'code100_admin_course';
+const DEFAULT_ADMIN_COURSE = 'CSCI-1100';
+const courseChangeListeners = [];
+
+function escapeHTMLAttr(str) {
+    return String(str ?? '').replace(/[&<>"']/g, s =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s]));
+}
+
+function getAdminCourse() {
+    return localStorage.getItem(ADMIN_COURSE_STORAGE) || DEFAULT_ADMIN_COURSE;
+}
+
+function setAdminCourse(course) {
+    if (!course) return;
+    localStorage.setItem(ADMIN_COURSE_STORAGE, course);
+    courseChangeListeners.forEach(cb => { try { cb(course); } catch (e) { console.error(e); } });
+}
+
+// 各 section 注册回调，课程一变就按新课程重载自己的数据
+function onAdminCourseChange(cb) {
+    courseChangeListeners.push(cb);
+}
+
+async function initCourseSwitcher() {
+    const select = document.getElementById('admin-course-select');
+    const addBtn = document.getElementById('admin-course-add');
+    if (!select || !addBtn) return;
+
+    async function loadCourseOptions(selected) {
+        let courses = [];
+        try {
+            const res = await adminFetch(`${API_BASE}/papers`);   // 不带 course = 全部课程
+            const papers = await res.json();
+            courses = [...new Set(papers.map(p => p.course).filter(Boolean))];
+        } catch (e) {
+            console.error('Failed to load courses:', e);
+        }
+        // 兜底：默认课程 + 当前选中课程一定要在选项里，
+        // 否则刚新建、还没有卷子的课程会选不中（select.value 落空）
+        [DEFAULT_ADMIN_COURSE, selected].forEach(c => {
+            if (c && !courses.includes(c)) courses.push(c);
+        });
+        courses.sort();
+        select.innerHTML = courses.map(c =>
+            `<option value="${escapeHTMLAttr(c)}">${escapeHTMLAttr(c)}</option>`).join('');
+        select.value = selected;
+    }
+
+    await loadCourseOptions(getAdminCourse());
+
+    select.addEventListener('change', () => setAdminCourse(select.value));
+
+    addBtn.addEventListener('click', async () => {
+        const name = (prompt('New course code (e.g. MATH-1010):') || '').trim();
+        if (!name) return;
+        setAdminCourse(name);            // 立刻切过去（哪怕这门课还没有卷子）
+        await loadCourseOptions(name);   // 把新课程并进下拉并选中
+    });
+
+    // 别处（如果以后有）切换课程时，让下拉框显示的值跟上
+    onAdminCourseChange(course => { if (select.value !== course) select.value = course; });
+}
+
 function initAdminApp() {
     if (adminAppInitialized) return;
     adminAppInitialized = true;
+
+    // 课程切换器先起：它异步填充下拉，但 getAdminCourse() 是同步的，
+    // 下面各 section 初始化时立刻就能按当前课程拉数据
+    initCourseSwitcher();
 
     initSidebarNav();
     initQuestionBank();
@@ -231,6 +305,8 @@ function initQuestionBank() {
     const questionTopicInput = document.getElementById('question-topic-input');
     const questionDescriptionInput = document.getElementById('question-description-input');
     const questionSolutionInput = document.getElementById('question-solution-input');
+    const questionPointsInput = document.getElementById('question-points-input');
+    const questionRubricInput = document.getElementById('question-rubric-input');
     const submitBtn = document.getElementById('submit-btn');
     const cancelEditBtn = document.getElementById('cancel-edit-btn');
 
@@ -259,13 +335,17 @@ function initQuestionBank() {
     }
 
     async function getOrCreatePaperId(category, year) {
-        const existingPaper = allPapers.find(p => p.paper_category === category && p.paper_year === year);
+        // allPapers 已按当前课程过滤，所以这里的 find 天然限定在本课程内。
+        // 仍显式带上 course：同一个 (Test, 年份) 在不同课程下是不同的卷子
+        const course = getAdminCourse();
+        const existingPaper = allPapers.find(p =>
+            p.paper_category === category && p.paper_year === year && p.course === course);
         if (existingPaper) return existingPaper.id;
 
         const response = await adminFetch(`${API_BASE}/papers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paper_category: category, paper_year: year })
+            body: JSON.stringify({ paper_category: category, paper_year: year, course })
         });
         const createdPaper = await response.json();
         allPapers.push(createdPaper);
@@ -274,7 +354,8 @@ function initQuestionBank() {
 
     async function loadPapers() {
         try {
-            const response = await adminFetch(`${API_BASE}/papers`);
+            // 只拉当前课程的卷子——试卷下拉、分类选项、年份都按课程作用域
+            const response = await adminFetch(`${API_BASE}/papers?course=${encodeURIComponent(getAdminCourse())}`);
             allPapers = await response.json();
 
             allPapers.sort((a, b) => {
@@ -299,7 +380,8 @@ function initQuestionBank() {
     // 用新的、需要密钥的 admin-list 接口，取代原来公开无保护的 /api/questions
     async function loadQuestions() {
         try {
-            const response = await adminFetch(`${API_BASE}/questions/admin-list`);
+            // 按当前课程过滤题库列表（admin-list 支持 course 参数）
+            const response = await adminFetch(`${API_BASE}/questions/admin-list?course=${encodeURIComponent(getAdminCourse())}`);
             allQuestions = await response.json();
             renderQuestionsTable();
         } catch (error) {
@@ -334,66 +416,80 @@ function initQuestionBank() {
             return;
         }
 
-        const groupsByCategory = {};
+        // 两级分组：外层每个 Test 分类一个文件夹，内层再按年份分。
+        // byCategory: { "Test 1": { 2026: [q...], 2020: [q...] }, ... }
+        const byCategory = {};
         filtered.forEach(q => {
             const category = q.testCategory || 'Unknown Paper';
-            if (!groupsByCategory[category]) groupsByCategory[category] = [];
-            groupsByCategory[category].push(q);
+            const year = q.year ?? '';
+            if (!byCategory[category]) byCategory[category] = {};
+            if (!byCategory[category][year]) byCategory[category][year] = [];
+            byCategory[category][year].push(q);
         });
 
-        const sortedCategories = Object.keys(groupsByCategory).sort(
+        // 外层按 Test 分类排（Test 1 < 2 < 3 < Final）
+        const sortedCategories = Object.keys(byCategory).sort(
             (a, b) => categorySortKey(a) - categorySortKey(b)
         );
 
+        // 一行题目。Paper 列去掉了——外层/内层文件夹标题已经写了 Test + 年份，行里再列一遍是冗余
+        const rowFor = q => {
+            const descriptionSnippet = (q.question_description || '').slice(0, 100)
+                + (q.question_description && q.question_description.length > 100 ? '…' : '');
+            return `
+                <tr>
+                    <td>${q.id}</td>
+                    <td>${q.question_number ?? ''}</td>
+                    <td>${q.subquestion_number ?? ''}</td>
+                    <td><span class="type-badge">${q.question_category ?? ''}</span></td>
+                    <td>${q.topic ? escapeHTML(q.topic) : '<span class="muted">—</span>'}</td>
+                    <td class="description-cell">${escapeHTML(descriptionSnippet)}</td>
+                    <td>
+                        <div class="row-actions">
+                            <button class="edit-btn" data-id="${q.id}">Edit</button>
+                            <button class="delete-btn" data-id="${q.id}">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        };
+
         questionsFoldersEl.innerHTML = sortedCategories.map(category => {
-            const questionsInCategory = groupsByCategory[category];
+            const yearsMap = byCategory[category];
+            const totalInCategory = Object.values(yearsMap).reduce((n, arr) => n + arr.length, 0);
 
-            questionsInCategory.sort((a, b) => {
-                if ((a.year || 0) !== (b.year || 0)) return (b.year || 0) - (a.year || 0);
-                return (a.question_number ?? 0) - (b.question_number ?? 0);
-            });
+            // 内层年份，新的在前
+            const sortedYears = Object.keys(yearsMap).sort((a, b) => (Number(b) || 0) - (Number(a) || 0));
 
-            const rowsHTML = questionsInCategory.map(q => {
-                const descriptionSnippet = (q.question_description || '').slice(0, 100)
-                    + (q.question_description && q.question_description.length > 100 ? '…' : '');
-
+            const yearFoldersHTML = sortedYears.map(year => {
+                const items = yearsMap[year].slice().sort((a, b) => (a.question_number ?? 0) - (b.question_number ?? 0));
+                const yearLabel = year === '' ? 'No year' : year;
                 return `
-                    <tr>
-                        <td>${q.id}</td>
-                        <td>${category} (${q.year ?? ''})</td>
-                        <td>${q.question_number ?? ''}</td>
-                        <td>${q.subquestion_number ?? ''}</td>
-                        <td><span class="type-badge">${q.question_category ?? ''}</span></td>
-                        <td>${q.topic ? escapeHTML(q.topic) : '<span class="muted">—</span>'}</td>
-                        <td class="description-cell">${escapeHTML(descriptionSnippet)}</td>
-                        <td>
-                            <div class="row-actions">
-                                <button class="edit-btn" data-id="${q.id}">Edit</button>
-                                <button class="delete-btn" data-id="${q.id}">Delete</button>
-                            </div>
-                        </td>
-                    </tr>
+                    <details class="paper-folder paper-folder-year">
+                        <summary>${escapeHTML(String(yearLabel))} <span class="folder-count">(${items.length})</span></summary>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>#</th>
+                                    <th>Sub</th>
+                                    <th>Type</th>
+                                    <th>Topic</th>
+                                    <th>Description</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>${items.map(rowFor).join('')}</tbody>
+                        </table>
+                    </details>
                 `;
             }).join('');
 
+            // 初始化时全部收起——外层 Test、内层年份都默认关，页面一进来最紧凑
             return `
-                <details class="paper-folder">
-                    <summary>${category} <span class="folder-count">(${questionsInCategory.length})</span></summary>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Paper</th>
-                                <th>#</th>
-                                <th>Sub</th>
-                                <th>Type</th>
-                                <th>Topic</th>
-                                <th>Description</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rowsHTML}</tbody>
-                    </table>
+                <details class="paper-folder paper-folder-test">
+                    <summary>${escapeHTML(category)} <span class="folder-count">(${totalInCategory})</span></summary>
+                    <div class="paper-folder-years">${yearFoldersHTML}</div>
                 </details>
             `;
         }).join('');
@@ -427,6 +523,9 @@ function initQuestionBank() {
         questionTopicInput.value = question.topic ?? '';
         questionDescriptionInput.value = question.question_description ?? '';
         questionSolutionInput.value = question.question_solution ?? '';
+        // points 为 null = 未设置，回填成空字符串（不是 0）；rubric 同理
+        questionPointsInput.value = (question.points === null || question.points === undefined) ? '' : question.points;
+        questionRubricInput.value = question.rubric ?? '';
 
         formTitle.textContent = `Edit Question #${question.id}`;
         submitBtn.textContent = 'Update Question';
@@ -541,6 +640,10 @@ function initQuestionBank() {
             return;
         }
 
+        // points 留空 → null（"未设置"，跟值 0 分不是一回事）；rubric 留空 → null
+        const pointsRaw = questionPointsInput.value.trim();
+        const rubricRaw = questionRubricInput.value.trim();
+
         const payload = {
             paperId: paperId,
             question_number: Number(questionNumberInput.value),
@@ -549,7 +652,10 @@ function initQuestionBank() {
             topic: questionTopicInput.value.trim(),
             question_description: questionDescriptionInput.value,
             question_solution: questionSolutionInput.value,
-            course: 'CSCI-1100'
+            points: pointsRaw === '' ? null : Number(pointsRaw),
+            rubric: rubricRaw === '' ? null : rubricRaw,
+            // 后端会以试卷的 course 为准覆盖这个值，这里仍显式传当前课程（语义清楚）
+            course: getAdminCourse()
         };
 
         try {
@@ -601,6 +707,13 @@ function initQuestionBank() {
     filterCategorySelect.addEventListener('change', renderQuestionsTable);
     filterSearchInput.addEventListener('input', renderQuestionsTable);
 
+    // 切换课程：重载本课程的试卷 + 题目，并退出编辑（编辑中的题属于旧课程）
+    onAdminCourseChange(async () => {
+        exitEditMode();
+        await loadPapers();
+        await loadQuestions();
+    });
+
     (async function initQuestions() {
         await loadPapers();
         await loadQuestions();
@@ -638,9 +751,20 @@ function initCribsheetLibrary() {
             allNotes = await response.json();
             renderNotesTable();
         } catch (error) {
-            console.error('Failed to load notes:', error);
-            showToast('Failed to load notes.', true);
+            // 后端还没有 /api/admin/cribsheet-notes 这套增删改接口，而且大概率
+            // 【不会】再补——Cribsheet 笔记库以后打算用 AI 生成，手工管理接口没必要建
+            // （见 HANDOFF）。所以拉不到就安静显示占位：不弹 toast、不刷红色 console，
+            // 它不是当前在做的东西。用 console.debug（默认级别看不到）留个线索就够
+            console.debug('Cribsheet note admin endpoint not implemented (on hold for AI generator).');
+            allNotes = [];
+            renderNotesPlaceholder();
         }
+    }
+
+    function renderNotesPlaceholder() {
+        notesCountEl.textContent = '';
+        notesTableBody.innerHTML =
+            `<tr><td colspan="5" class="empty-state">Note management isn't wired up — this section is on hold for the planned AI cribsheet generator.</td></tr>`;
     }
 
     function renderNotesTable() {
@@ -713,7 +837,7 @@ function initCribsheetLibrary() {
         }
 
         const id = noteIdInput.value;
-        const payload = { category, title, content, course: 'CSCI-1100' };
+        const payload = { category, title, content, course: getAdminCourse() };
 
         try {
             if (id) {

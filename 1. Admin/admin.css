@@ -220,6 +220,36 @@ button {
     margin-top: 0;
 }
 
+/* 两级文件夹：外层 = Test 分类（加粗、深色），内层 = 年份（缩进、次一级） */
+.paper-folder-test > summary {
+    font-size: 1rem;
+}
+
+/* 年份文件夹的容器：留点内边距，让内层相对外层缩进 */
+.paper-folder-years {
+    padding: 8px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* 内层年份文件夹：比外层轻一档——白底、summary 小一号、颜色淡一些 */
+.paper-folder-year {
+    margin-bottom: 0;
+}
+
+.paper-folder-year > summary {
+    padding: 9px 14px;
+    background-color: #ffffff;
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: var(--admin-text);
+}
+
+.paper-folder-year > summary:hover {
+    background-color: hsl(0, 0%, 97%);
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
@@ -415,6 +445,58 @@ td.description-cell {
 .admin-sidebar-title {
     font-size: 1rem;
     margin: 0 8px 16px;
+}
+
+/* 课程切换器：夹在标题和导航之间，视觉上跟导航项分开（它是全局上下文，不是一个页面） */
+.admin-course-switch {
+    margin: 0 8px 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-course-switch label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(0, 0%, 45%);
+    margin-bottom: 6px;
+}
+
+.admin-course-row {
+    display: flex;
+    gap: 6px;
+}
+
+.admin-course-row select {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    background: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--admin-text);
+    cursor: pointer;
+}
+
+.admin-course-row button {
+    flex-shrink: 0;
+    padding: 7px 10px;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    background: none;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--admin-blue);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.admin-course-row button:hover {
+    background: hsl(212, 100%, 96%);
 }
 
 .admin-nav-item {
