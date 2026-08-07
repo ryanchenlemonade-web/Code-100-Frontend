@@ -81,24 +81,512 @@ function getCribsheetHistoryScope() {
 function cribsheetUndoKey() { return `${CRIBSHEET_UNDO_KEY_BASE}_${getCribsheetHistoryScope()}`; }
 function cribsheetRedoKey() { return `${CRIBSHEET_REDO_KEY_BASE}_${getCribsheetHistoryScope()}`; }
 
+// ⚠️ v2:Cribsheet 从「GridStack 卡片画布」换成「文档式流式小抄」。
+// 入口只初始化新的文档视图。卡片时代的一堆 init（initCribsheetGridStack /
+// Library / StylePanel / Toolbar / EditModal / Pdf …）【不再调用】——那些函数暂留在
+// 本文件里当死代码，以后专门清一轮。切换的理由：卡片绝对定位既浪费空间又打不了印。
 function initCribsheetBuilder() {
-    // 清掉改成按用户区分之前留下的那两个旧 key，避免它们一直占着 localStorage
-    localStorage.removeItem(CRIBSHEET_UNDO_KEY_BASE);
-    localStorage.removeItem(CRIBSHEET_REDO_KEY_BASE);
+    initCribsheetDoc();
+}
 
-    loadCribsheetNoteSizes().then(() => {
-        initCribsheetGridStack();
-        loadMyCribsheetLayout();
+// ============================================================
+// 文档式 Cribsheet（v2）
+// 一张流式多栏文档：AI 生成 block（title+content）+ 手动编辑。
+// 整个文档 JSON 存进 /api/progress/crib-sheet（原来给 My Notes 用的那个 content 字段，
+// 现在装整份文档；旧的纯文本会被自动包成一个 block，不丢）。
+// ============================================================
+// columns:每页栏数(1/2/3)。density:字号缩放(0.8~1.3),越大越松、每页塞得越少。
+let cribsheetDoc = { orientation: 'portrait', columns: 2, density: 1, name: '', exam: '', blocks: [] };
+let cribsheetDocSaveTimer = null;
+let cribsheetDocLoaded = false;
+
+// 页面像素尺寸(@96dpi:8.5in×11in)。排版引擎按这个真实高度分页。
+const CRIBSHEET_PAGE = { portrait: { w: 816, h: 1056 }, landscape: { w: 1056, h: 816 } };
+const CRIBSHEET_PAGE_PAD = 40;   // 纸内边距
+const CRIBSHEET_COL_GAP = 20;
+const CRIBSHEET_BLOCK_GAP = 10;
+const CRIBSHEET_HEADER_H = 88;   // 第 1 页顶部品牌+姓名区占高(估算,留够余量)
+let cribsheetMeasureEl = null;   // 复用的离屏测量容器
+
+function initCribsheetDoc() {
+    const pagesEl = document.getElementById('cribsheet-doc-pages');
+    if (!pagesEl) return;
+
+    initCribsheetAIFlow();       // 复用已建好的 AI 弹窗（其成功回调已改成往文档加 block）
+    wireCribsheetDocToolbar();
+    wireCribsheetPrintFix();     // 头部(Name/Exam)现在由 render 动态生成,不再需要 wireCribsheetDocHeader
+    loadCribsheetDoc();
+}
+
+// ⚠️ 打印空白页的终极修复。
+// 根因:文档的祖先 #content-container 带着 transform(matrix，切板块动画留下的），
+// 被 transform 的祖先会让整棵子树打印成空白。它由 CSS transition/animation 施加，
+// 而 transition/animation 在层叠里【压得过】author 的 !important，所以纯 CSS 的
+// `transform:none !important` 盖不住它（试过，没用）。
+// 这里改成:打印前用 JS 往祖先链上强制写 inline 样式,连 transition 一起关掉,
+// 打印后原样还原。inline + 关掉 transition,没有东西能再覆盖。
+let cribsheetPrintSaved = null;
+
+function wireCribsheetPrintFix() {
+    if (window.__cribsheetPrintFixWired) return;
+    window.__cribsheetPrintFixWired = true;
+    window.addEventListener('beforeprint', stripCribsheetPrintClippers);
+    window.addEventListener('afterprint', restoreCribsheetPrintClippers);
+}
+
+function stripCribsheetPrintClippers() {
+    // 只在真的停在 Cribsheet 视图时才动手,别影响别处打印
+    const view = document.getElementById('revision-view-cribsheet');
+    if (!view || getComputedStyle(view).display === 'none') return;
+
+    const targets = [];
+    ['content-container', 'revision-content', 'revision-view-cribsheet'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) targets.push(el);
     });
-    loadCribsheetLibrary();
-    initCribsheetLibrarySearch();
-    initCribsheetCustomNoteFlow();
-    initCribsheetEditModal();
-    initCribsheetClipboardShortcuts();
-    initCribsheetStylePanel();
-    initCribsheetToolbarActions();
-    initCribsheetOrientationToggle();
-    initCribsheetPdfExport();
+    document.querySelectorAll('.cribsheet-page-wrap, .cribsheet-doc-layout').forEach(el => targets.push(el));
+
+    cribsheetPrintSaved = targets.map(el => ({ el, style: el.getAttribute('style') }));
+    targets.forEach(el => {
+        el.style.setProperty('transform', 'none', 'important');
+        el.style.setProperty('transition', 'none', 'important');
+        el.style.setProperty('animation', 'none', 'important');
+        el.style.setProperty('overflow', 'visible', 'important');
+        el.style.setProperty('opacity', '1', 'important');
+        el.style.setProperty('max-height', 'none', 'important');
+        el.style.setProperty('filter', 'none', 'important');
+    });
+}
+
+function restoreCribsheetPrintClippers() {
+    if (!cribsheetPrintSaved) return;
+    cribsheetPrintSaved.forEach(({ el, style }) => {
+        if (style === null) el.removeAttribute('style');
+        else el.setAttribute('style', style);
+    });
+    cribsheetPrintSaved = null;
+}
+
+// ---------- 存 / 取 ----------
+function loadCribsheetDoc() {
+    const token = getToken();
+    if (!token) { renderCribsheetDoc(); return; }   // 没登录:空文档，交互时再提示登录
+
+    fetch(`${APP_API_BASE}/api/progress/crib-sheet`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+            const content = data && data.content ? data.content : '';
+            cribsheetDoc = parseCribsheetDoc(content);
+            cribsheetDocLoaded = true;
+            syncCribsheetToolbarControls();
+            renderCribsheetDoc();   // 头部 + 方向 + 栏数 + 密度都在 render 里体现
+        })
+        .catch(err => { console.error('Failed to load cribsheet doc:', err); renderCribsheetDoc(); });
+}
+
+// content 可能是新版 JSON，也可能是旧版纯文本（My Notes 时代）。旧文本包成一个 block 保留。
+function parseCribsheetDoc(content) {
+    const fallback = { orientation: 'portrait', columns: 2, density: 1, name: '', exam: '', blocks: [] };
+    if (!content) return fallback;
+    try {
+        const obj = JSON.parse(content);
+        if (obj && Array.isArray(obj.blocks)) {
+            return {
+                orientation: obj.orientation === 'landscape' ? 'landscape' : 'portrait',
+                columns: [1, 2, 3].includes(obj.columns) ? obj.columns : 2,
+                density: (typeof obj.density === 'number' && obj.density >= 0.8 && obj.density <= 1.3) ? obj.density : 1,
+                name: typeof obj.name === 'string' ? obj.name : '',
+                exam: typeof obj.exam === 'string' ? obj.exam : '',
+                blocks: obj.blocks
+                    .filter(b => b && (b.title != null || b.content != null))
+                    .map(b => ({
+                        title: String(b.title || ''),
+                        content: String(b.content || ''),
+                        scale: (typeof b.scale === 'number' && b.scale >= 0.7 && b.scale <= 1.8) ? b.scale : 1
+                    }))
+            };
+        }
+    } catch (e) {
+        // 不是 JSON —— 旧的纯文本笔记，包成一个 block
+    }
+    return { orientation: 'portrait', columns: 2, density: 1, name: '', exam: '', blocks: [{ title: 'My notes', content: String(content) }] };
+}
+
+function saveCribsheetDoc() {
+    const token = getToken();
+    if (!token) return;
+    clearTimeout(cribsheetDocSaveTimer);
+    setCribsheetDocStatus('Saving…');
+    cribsheetDocSaveTimer = setTimeout(() => {
+        fetch(`${APP_API_BASE}/api/progress/crib-sheet`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: JSON.stringify(cribsheetDoc) })
+        })
+            .then(res => { setCribsheetDocStatus(res.ok ? 'Saved' : 'Save failed'); })
+            .catch(() => setCribsheetDocStatus('Save failed'));
+    }, 600);   // 防抖:连续编辑不狂发请求
+}
+
+function setCribsheetDocStatus(msg) {
+    const el = document.getElementById('cribsheet-doc-status');
+    if (el) el.textContent = msg || '';
+}
+
+// ---------- 排版引擎:量高度 → 分配到 页×栏 → 渲染多页 ----------
+function cribsheetSettings() {
+    return {
+        orientation: cribsheetDoc.orientation === 'landscape' ? 'landscape' : 'portrait',
+        columns: [1, 2, 3].includes(cribsheetDoc.columns) ? cribsheetDoc.columns : 2,
+        density: (cribsheetDoc.density >= 0.8 && cribsheetDoc.density <= 1.3) ? cribsheetDoc.density : 1
+    };
+}
+
+// 离屏测量一个 block 在给定栏宽/字号下的真实高度
+function ensureCribsheetMeasureEl() {
+    if (cribsheetMeasureEl && document.body.contains(cribsheetMeasureEl)) return cribsheetMeasureEl;
+    const el = document.createElement('div');
+    el.className = 'cribsheet-page-col';
+    el.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;box-sizing:border-box;';
+    document.body.appendChild(el);
+    cribsheetMeasureEl = el;
+    return el;
+}
+// 每块可以有自己的 scale(默认 1),夹在 [0.7, 1.8]。这就是"每块自己调大小"的量纲。
+function cribsheetBlockScale(block) {
+    const v = block && typeof block.scale === 'number' ? block.scale : 1;
+    return Math.max(0.7, Math.min(1.8, v));
+}
+
+function measureCribsheetBlock(block, colW, baseFont) {
+    const m = ensureCribsheetMeasureEl();
+    m.style.width = colW + 'px';
+    m.style.fontSize = (baseFont * cribsheetBlockScale(block)) + 'px';
+    const sec = document.createElement('section');
+    sec.className = 'cribsheet-doc-block';
+    const t = document.createElement('div');
+    t.className = 'cribsheet-doc-block-title';
+    t.textContent = block.title || '';
+    const c = document.createElement('div');
+    c.className = 'cribsheet-doc-block-content';
+    c.textContent = block.content || '';
+    sec.appendChild(t); sec.appendChild(c);
+    m.innerHTML = '';
+    m.appendChild(sec);
+    return sec.offsetHeight;
+}
+
+function renderCribsheetDoc() {
+    const wrap = document.getElementById('cribsheet-doc-pages');
+    if (!wrap) return;
+
+    const s = cribsheetSettings();
+    const dim = CRIBSHEET_PAGE[s.orientation];
+    const colW = (dim.w - CRIBSHEET_PAGE_PAD * 2 - CRIBSHEET_COL_GAP * (s.columns - 1)) / s.columns;
+    const baseFont = 12 * s.density;
+    const blocks = cribsheetDoc.blocks || [];
+
+    // 1) 量每个 block 的高度
+    const heights = blocks.map(b => measureCribsheetBlock(b, colW, baseFont) + CRIBSHEET_BLOCK_GAP);
+
+    // 2) 贪心分配:填满一栏进下一栏,填满一页开新页。第 1 页顶部要给品牌区留高。
+    const pages = [];
+    let page = Array.from({ length: s.columns }, () => []);
+    let colIdx = 0, colH = 0;
+    const contentH = pi => dim.h - CRIBSHEET_PAGE_PAD * 2 - (pi === 0 ? CRIBSHEET_HEADER_H : 0);
+    blocks.forEach((b, i) => {
+        const h = heights[i];
+        // 单块比整栏还高:直接放，别死循环
+        while (colH > 0 && colH + h > contentH(pages.length)) {
+            colIdx++; colH = 0;
+            if (colIdx >= s.columns) { pages.push(page); page = Array.from({ length: s.columns }, () => []); colIdx = 0; }
+        }
+        page[colIdx].push(i);
+        colH += h;
+    });
+    pages.push(page);
+
+    // 3) 渲染
+    wrap.innerHTML = '';
+    wrap.classList.toggle('is-empty', blocks.length === 0);
+    pages.forEach((pg, pi) => {
+        const pageEl = document.createElement('div');
+        pageEl.className = 'cribsheet-page' + (s.orientation === 'landscape' ? ' landscape' : '');
+        pageEl.style.width = dim.w + 'px';
+        pageEl.style.minHeight = dim.h + 'px';
+        pageEl.dataset.pageNo = String(pi + 1);
+
+        if (pi === 0) pageEl.appendChild(buildCribsheetDocHeaderEl());
+
+        const colsEl = document.createElement('div');
+        colsEl.className = 'cribsheet-page-cols';
+        colsEl.style.gap = CRIBSHEET_COL_GAP + 'px';
+        colsEl.style.fontSize = baseFont + 'px';
+        pg.forEach(colBlockIdxs => {
+            const colEl = document.createElement('div');
+            colEl.className = 'cribsheet-page-col';
+            colBlockIdxs.forEach(bi => colEl.appendChild(buildCribsheetBlockEl(bi, baseFont)));
+            colsEl.appendChild(colEl);
+        });
+        pageEl.appendChild(colsEl);
+
+        // 页码(打印时 CSS 隐藏或保留看喜好)
+        const footer = document.createElement('div');
+        footer.className = 'cribsheet-page-no';
+        footer.textContent = `${pi + 1} / ${pages.length}`;
+        pageEl.appendChild(footer);
+
+        wrap.appendChild(pageEl);
+    });
+
+    renderCribsheetPager(pages.length);
+}
+
+// 一个可编辑 block:标题 + 正文 + 悬浮控制(上移/下移/删)。编辑时只更新数据 + 存,
+// 【不】即时重排(会打断输入);失焦后重排一次让溢出重新流页。
+function buildCribsheetBlockEl(index, baseFont) {
+    const block = cribsheetDoc.blocks[index];
+    const section = document.createElement('section');
+    section.className = 'cribsheet-doc-block';
+    // 每块自己的大小 = baseFont × 本块 scale。改这一个 font-size,整块(标题/正文都是 em)一起缩放
+    const scale = cribsheetBlockScale(block);
+    section.style.fontSize = (baseFont * scale) + 'px';
+
+    const title = document.createElement('div');
+    title.className = 'cribsheet-doc-block-title';
+    title.contentEditable = 'true';
+    title.spellcheck = false;
+    title.textContent = block.title || '';
+    title.dataset.placeholder = 'Title';
+    title.addEventListener('input', () => { cribsheetDoc.blocks[index].title = title.innerText; saveCribsheetDoc(); });
+    title.addEventListener('blur', reflowCribsheetSoon);
+    section.appendChild(title);
+
+    const content = document.createElement('div');
+    content.className = 'cribsheet-doc-block-content';
+    content.contentEditable = 'true';
+    content.spellcheck = false;
+    content.textContent = block.content || '';
+    content.dataset.placeholder = 'Content';
+    content.addEventListener('input', () => { cribsheetDoc.blocks[index].content = content.innerText; saveCribsheetDoc(); });
+    content.addEventListener('blur', reflowCribsheetSoon);
+    section.appendChild(content);
+
+    const tools = document.createElement('div');
+    tools.className = 'cribsheet-doc-block-tools';
+    tools.innerHTML = `
+        <button type="button" data-act="up" title="Move up"><i class="fa-solid fa-arrow-up"></i></button>
+        <button type="button" data-act="down" title="Move down"><i class="fa-solid fa-arrow-down"></i></button>
+        <button type="button" data-act="del" title="Delete"><i class="fa-solid fa-xmark"></i></button>`;
+    tools.querySelector('[data-act="up"]').addEventListener('click', () => moveCribsheetBlock(index, -1));
+    tools.querySelector('[data-act="down"]').addEventListener('click', () => moveCribsheetBlock(index, 1));
+    tools.querySelector('[data-act="del"]').addEventListener('click', () => {
+        cribsheetDoc.blocks.splice(index, 1);
+        renderCribsheetDoc();
+        saveCribsheetDoc();
+    });
+    section.appendChild(tools);
+
+    // 拖拽手柄:拖动缩放【本块】,松手后其余块自动重排。这就是"每块自己调大小"。
+    const handle = document.createElement('div');
+    handle.className = 'cribsheet-doc-block-resize';
+    handle.title = 'Drag to resize this block';
+    handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX, startY = e.clientY;
+        const startScale = cribsheetBlockScale(cribsheetDoc.blocks[index]);
+        const base = 12 * cribsheetSettings().density;
+        let newScale = startScale;
+        try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+        section.classList.add('is-resizing');
+
+        const onMove = (ev) => {
+            // 往右下拖 = 变大;取 x/y 位移的平均,除以灵敏度
+            const delta = ((ev.clientX - startX) + (ev.clientY - startY)) / 2;
+            newScale = Math.max(0.7, Math.min(1.8, startScale + delta / 220));
+            section.style.fontSize = (base * newScale) + 'px';   // 拖动中只动本块,不重排(不卡)
+        };
+        const onUp = () => {
+            handle.removeEventListener('pointermove', onMove);
+            handle.removeEventListener('pointerup', onUp);
+            section.classList.remove('is-resizing');
+            cribsheetDoc.blocks[index].scale = newScale;
+            renderCribsheetDoc();   // 松手才重排:本块尺寸定了,其余块重新流页
+            saveCribsheetDoc();
+        };
+        handle.addEventListener('pointermove', onMove);
+        handle.addEventListener('pointerup', onUp);
+    });
+    section.appendChild(handle);
+
+    return section;
+}
+
+function moveCribsheetBlock(index, dir) {
+    const to = index + dir;
+    const b = cribsheetDoc.blocks;
+    if (to < 0 || to >= b.length) return;
+    [b[index], b[to]] = [b[to], b[index]];
+    renderCribsheetDoc();
+    saveCribsheetDoc();
+}
+
+// 失焦后延迟重排一次(合并连续失焦,避免频繁重建)
+let cribsheetReflowTimer = null;
+function reflowCribsheetSoon() {
+    clearTimeout(cribsheetReflowTimer);
+    cribsheetReflowTimer = setTimeout(() => {
+        // 正在某个块里打字就先不重排,免得把光标弄没
+        const a = document.activeElement;
+        if (a && a.classList && a.classList.contains('cribsheet-doc-block-title')) return;
+        if (a && a.classList && a.classList.contains('cribsheet-doc-block-content')) return;
+        renderCribsheetDoc();
+    }, 250);
+}
+
+// 第 1 页的品牌 + Name/Exam(JS 渲染,值取自数据模型,重排时重建并重新绑定)
+function buildCribsheetDocHeaderEl() {
+    const h = document.createElement('div');
+    h.className = 'cribsheet-doc-header';
+    h.innerHTML = `
+        <div class="cribsheet-watermark" aria-hidden="true">
+            <img src="../../../0. images/Code 100.png" alt=""><span>Code 100</span>
+        </div>
+        <label class="cribsheet-sheet-field cribsheet-field-name">
+            <span class="cribsheet-sheet-field-label">Name</span>
+            <input type="text" class="cribsheet-hdr-name" maxlength="60" autocomplete="off">
+        </label>
+        <label class="cribsheet-sheet-field cribsheet-field-exam">
+            <span class="cribsheet-sheet-field-label">Exam</span>
+            <input type="text" class="cribsheet-hdr-exam" maxlength="40" autocomplete="off">
+        </label>`;
+    const nameEl = h.querySelector('.cribsheet-hdr-name');
+    const examEl = h.querySelector('.cribsheet-hdr-exam');
+    nameEl.value = cribsheetDoc.name || '';
+    examEl.value = cribsheetDoc.exam || '';
+    nameEl.addEventListener('input', () => { cribsheetDoc.name = nameEl.value; saveCribsheetDoc(); });
+    examEl.addEventListener('input', () => { cribsheetDoc.exam = examEl.value; saveCribsheetDoc(); });
+    return h;
+}
+
+// 分页器:每页一个按钮,点击滚到那一页
+function renderCribsheetPager(pageCount) {
+    const pager = document.getElementById('cribsheet-pager');
+    if (!pager) return;
+    if (pageCount <= 1) { pager.innerHTML = ''; pager.style.display = 'none'; return; }
+    pager.style.display = '';
+    pager.innerHTML = `<span class="cribsheet-pager-label">${pageCount} pages</span>`;
+    for (let i = 1; i <= pageCount; i++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'cribsheet-pager-btn';
+        btn.textContent = String(i);
+        btn.addEventListener('click', () => {
+            const pageEl = document.querySelector(`.cribsheet-page[data-page-no="${i}"]`);
+            if (pageEl) pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        pager.appendChild(btn);
+    }
+}
+
+// AI 生成成功后往文档追加 block（复用同一份数据模型），然后重渲染 + 存
+function addCribsheetBlocks(notes) {
+    if (!Array.isArray(notes) || !notes.length) return;
+    notes.forEach(n => cribsheetDoc.blocks.push({ title: String(n.title || ''), content: String(n.content || '') }));
+    renderCribsheetDoc();
+    saveCribsheetDoc();
+}
+
+// ---------- 工具栏 / 头部 ----------
+function wireCribsheetDocToolbar() {
+    const addBtn = document.getElementById('cribsheet-doc-add-block');
+    const clearBtn = document.getElementById('cribsheet-doc-clear');
+    const pdfBtn = document.getElementById('cribsheet-pdf-btn');
+    const orient = document.getElementById('cribsheet-orientation-toggle');
+
+    if (addBtn && !addBtn.dataset.wired) {
+        addBtn.dataset.wired = '1';
+        addBtn.addEventListener('click', () => {
+            if (!getToken()) { setCribsheetDocStatus('Sign in first'); return; }
+            cribsheetDoc.blocks.push({ title: '', content: '' });
+            renderCribsheetDoc();
+            saveCribsheetDoc();
+            // 光标落到新块标题
+            const blocks = document.querySelectorAll('#cribsheet-doc-pages .cribsheet-doc-block .cribsheet-doc-block-title');
+            const last = blocks[blocks.length - 1];
+            if (last) last.focus();
+        });
+    }
+
+    if (clearBtn && !clearBtn.dataset.wired) {
+        clearBtn.dataset.wired = '1';
+        clearBtn.addEventListener('click', () => {
+            if (!cribsheetDoc.blocks.length) return;
+            if (!confirm('Clear the whole sheet? This cannot be undone.')) return;
+            cribsheetDoc.blocks = [];
+            renderCribsheetDoc();
+            saveCribsheetDoc();
+        });
+    }
+
+    if (pdfBtn && !pdfBtn.dataset.wired) {
+        pdfBtn.dataset.wired = '1';
+        // Save as PDF = 浏览器打印 → 选"另存为 PDF"。文档是流式排版，天然分页，打印稳
+        pdfBtn.addEventListener('click', () => window.print());
+    }
+
+    if (orient && !orient.dataset.wired) {
+        orient.dataset.wired = '1';
+        orient.querySelectorAll('button[data-orientation]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                cribsheetDoc.orientation = btn.dataset.orientation === 'landscape' ? 'landscape' : 'portrait';
+                syncCribsheetToolbarControls();
+                renderCribsheetDoc();
+                saveCribsheetDoc();
+            });
+        });
+    }
+
+    // 栏数 1/2/3
+    const colsToggle = document.getElementById('cribsheet-columns-toggle');
+    if (colsToggle && !colsToggle.dataset.wired) {
+        colsToggle.dataset.wired = '1';
+        colsToggle.querySelectorAll('button[data-columns]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                cribsheetDoc.columns = parseInt(btn.dataset.columns, 10) || 2;
+                syncCribsheetToolbarControls();
+                renderCribsheetDoc();
+                saveCribsheetDoc();
+            });
+        });
+    }
+
+    // 密度滑块(字号缩放)
+    const density = document.getElementById('cribsheet-density');
+    if (density && !density.dataset.wired) {
+        density.dataset.wired = '1';
+        density.addEventListener('input', () => {
+            cribsheetDoc.density = parseFloat(density.value) || 1;
+            renderCribsheetDoc();
+        });
+        density.addEventListener('change', saveCribsheetDoc);   // 松手才存,拖动时不狂发
+    }
+}
+
+// 把工具栏上的方向 / 栏数 / 密度控件同步成当前数据模型的值
+function syncCribsheetToolbarControls() {
+    const s = cribsheetSettings();
+    const orient = document.getElementById('cribsheet-orientation-toggle');
+    if (orient) orient.querySelectorAll('button[data-orientation]').forEach(btn =>
+        btn.classList.toggle('active', btn.dataset.orientation === s.orientation));
+    const cols = document.getElementById('cribsheet-columns-toggle');
+    if (cols) cols.querySelectorAll('button[data-columns]').forEach(btn =>
+        btn.classList.toggle('active', parseInt(btn.dataset.columns, 10) === s.columns));
+    const density = document.getElementById('cribsheet-density');
+    if (density) density.value = String(s.density);
 }
 
 // ---------- 笔记库（左边面板） ----------
@@ -293,9 +781,180 @@ function initCribsheetCustomNoteFlow() {
         }
         backdrop.style.display = 'none';
         loadCribsheetNoteSizes().then(() => {
-            addNoteToGrid({ customTitle: title, customContent: content, title }, getDefaultCribsheetSize());
+            // 自定义笔记也按内容自适应，跟 AI 卡一个待遇
+            addNoteToGrid({ customTitle: title, customContent: content, title }, computeCribsheetFitSize(title, content));
         });
     });
+}
+
+// ---------- AI 生成 ----------
+// 调 /api/ai/cribsheet(复用后端的 AI 引擎),把返回的卡片走 addNoteToGrid 摆上画布。
+// 三种 scope:custom(自定主题)/ marked(我标记的题,需登录)/ paper(某张卷)。
+// AI Cribsheet Assistant:三步向导的状态(用户复核中的推荐 topics)
+let cribsheetAssistantTopics = [];   // [{name, priority}]
+
+function initCribsheetAIFlow() {
+    const openBtn = document.getElementById('cribsheet-ai-generate-btn');
+    const backdrop = document.getElementById('cribsheet-ai-modal-backdrop');
+    if (!openBtn || openBtn.dataset.listenerAttached) return;
+    openBtn.dataset.listenerAttached = 'true';
+
+    const step1 = backdrop.querySelector('[data-step="1"]');
+    const step2 = backdrop.querySelector('[data-step="2"]');
+    const examSel = document.getElementById('cribsheet-ai-exam');
+    const srcBank = document.getElementById('cribsheet-ai-src-bank');
+    const srcMarked = document.getElementById('cribsheet-ai-src-marked');
+    const status1 = document.getElementById('cribsheet-ai-status');
+    const status2 = document.getElementById('cribsheet-ai-status2');
+    const analyzeBtn = document.getElementById('cribsheet-ai-analyze');
+    const cancelBtn = document.getElementById('cribsheet-ai-cancel');
+    const backBtn = document.getElementById('cribsheet-ai-back');
+    const generateBtn = document.getElementById('cribsheet-ai-generate2');
+    const topicsEl = document.getElementById('cribsheet-ai-topics');
+    const topicNew = document.getElementById('cribsheet-ai-topic-new');
+    const topicAddBtn = document.getElementById('cribsheet-ai-topic-add-btn');
+
+    const set1 = (m, e = false) => { status1.textContent = m || ''; status1.classList.toggle('is-error', !!e); };
+    const set2 = (m, e = false) => { status2.textContent = m || ''; status2.classList.toggle('is-error', !!e); };
+    const showStep = n => { step1.style.display = n === 1 ? '' : 'none'; step2.style.display = n === 2 ? '' : 'none'; };
+
+    const selectedSources = () => {
+        const s = [];
+        if (srcBank.checked) s.push('bank');
+        if (srcMarked.checked) s.push('marked');
+        return s;
+    };
+
+    openBtn.addEventListener('click', () => {
+        set1(''); set2('');
+        analyzeBtn.disabled = false; generateBtn.disabled = false;
+        showStep(1);
+        backdrop.style.display = 'flex';
+    });
+    cancelBtn.addEventListener('click', () => { backdrop.style.display = 'none'; });
+    backBtn.addEventListener('click', () => { set2(''); showStep(1); });
+
+    // Step 1 → Analyze
+    analyzeBtn.addEventListener('click', async () => {
+        const sources = selectedSources();
+        if (!sources.length) { set1('Pick at least one source.', true); return; }
+        if (sources.includes('marked') && !getToken()) { set1('Sign in to use your marked questions.', true); return; }
+        analyzeBtn.disabled = true;
+        set1('Analyzing your exam… this can take ~10 seconds.');
+        try {
+            const topics = await cribsheetAssistantAnalyze({ examCategory: examSel.value, sources });
+            if (!topics.length) { set1('No topics came back — try again.', true); analyzeBtn.disabled = false; return; }
+            cribsheetAssistantTopics = topics.map(t => ({ name: String(t.name || ''), priority: Number(t.priority) || 3 }));
+            renderAssistantTopics(topicsEl);
+            set1(''); set2('');
+            showStep(2);
+            analyzeBtn.disabled = false;
+        } catch (err) {
+            set1(err.message || 'Analysis failed.', true);
+            analyzeBtn.disabled = false;
+        }
+    });
+
+    // 手动加 topic
+    const addTopic = () => {
+        const name = topicNew.value.trim();
+        if (!name) return;
+        cribsheetAssistantTopics.push({ name, priority: 3 });
+        topicNew.value = '';
+        renderAssistantTopics(topicsEl);
+    };
+    topicAddBtn.addEventListener('click', addTopic);
+    topicNew.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addTopic(); } });
+
+    // Step 2 → Generate
+    generateBtn.addEventListener('click', async () => {
+        if (!cribsheetAssistantTopics.length) { set2('Keep at least one topic.', true); return; }
+        if (!getToken()) { set2('Sign in first — your cribsheet is saved to your account.', true); return; }
+        generateBtn.disabled = true;
+        set2('Generating your cribsheet… this can take ~20 seconds.');
+        try {
+            const sheet = await cribsheetAssistantGenerate({
+                examCategory: examSel.value,
+                sources: selectedSources(),
+                topics: cribsheetAssistantTopics.map(t => t.name)
+            });
+            const n = addCribsheetStructured(sheet);
+            backdrop.style.display = 'none';
+            generateBtn.disabled = false;
+            set2('');
+            cribsheetToast(`Added ${n} block${n === 1 ? '' : 's'} to your cribsheet.`);
+        } catch (err) {
+            set2(err.message || 'Generation failed.', true);
+            generateBtn.disabled = false;
+        }
+    });
+}
+
+// 渲染可加/删的推荐 topic 列表(带星级)
+function renderAssistantTopics(container) {
+    if (!container) return;
+    container.innerHTML = '';
+    cribsheetAssistantTopics.forEach((t, i) => {
+        const p = Math.max(1, Math.min(5, t.priority || 3));
+        const row = document.createElement('div');
+        row.className = 'cribsheet-topic-row';
+        const stars = document.createElement('span');
+        stars.className = 'cribsheet-topic-stars';
+        stars.textContent = '★'.repeat(p) + '☆'.repeat(5 - p);
+        const name = document.createElement('span');
+        name.className = 'cribsheet-topic-name';
+        name.textContent = t.name;
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'cribsheet-topic-remove';
+        rm.title = 'Remove';
+        rm.textContent = '×';
+        rm.addEventListener('click', () => { cribsheetAssistantTopics.splice(i, 1); renderAssistantTopics(container); });
+        row.append(stars, name, rm);
+        container.appendChild(row);
+    });
+}
+
+function cribsheetAssistantAnalyze(body) {
+    return cribsheetAssistantPost('/api/ai/exam/analyze', body)
+        .then(d => Array.isArray(d.topics) ? d.topics : []);
+}
+function cribsheetAssistantGenerate(body) {
+    return cribsheetAssistantPost('/api/ai/exam/generate', body);
+}
+function cribsheetAssistantPost(path, body) {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return fetch(`${APP_API_BASE}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
+        .then(async res => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `Request failed (HTTP ${res.status}).`);
+            return data;
+        });
+}
+
+// 结构化 sheet → 拍平进【现有文档】(不碰编辑器/PDF)。
+// 每个 item = 一个 block;section 的 priority 映射到块大小 scale(high 大、low 小),给视觉层次。
+// 返回加了几个 block。
+function addCribsheetStructured(sheet) {
+    const sections = (sheet && Array.isArray(sheet.sections)) ? sheet.sections : [];
+    const prioScale = { high: 1.15, medium: 1, low: 0.9 };
+    let added = 0;
+    sections.forEach(sec => {
+        const scale = prioScale[String(sec.priority || 'medium').toLowerCase()] || 1;
+        (sec.items || []).forEach(it => {
+            cribsheetDoc.blocks.push({
+                title: String(it.title || ''),
+                content: String(it.content || ''),
+                scale
+            });
+            added++;
+        });
+    });
+    renderCribsheetDoc();
+    saveCribsheetDoc();
+    return added;
 }
 
 // ---------- 选尺寸弹窗（引用笔记库 / 自定义笔记 都走这一个） ----------
@@ -324,6 +983,55 @@ function getDefaultCribsheetSize() {
     // 后端没返回任何预设时的兜底。sizeId 留空——数据库里没有对应的行，
     // 硬塞一个 id 会变成悬空引用
     return { id: null, cols: 4, rows: 4 };
+}
+
+// ---------- 自适应尺寸（内容多大，卡就多大） ----------
+// cribsheet 的意义是一页塞尽量多的信息，固定大卡（4×4）对两行的小抄是巨大浪费。
+// 这里按【内容真实高度】算卡片大小：宽度按最长行估列数，高度【off-screen 实测】——
+// 卡片 overflow:hidden，估小了会裁掉内容，所以必须量、且向上取整留余量。
+// 配合 findFreeGridPosition 的首适配摆放（本就是往左上空隙里塞），
+// 小卡自动紧密铺开 = 自适应 + 自动紧排，位置也照常存进后端，不会重载后错位。
+//
+// 只在【知道内容】的入口用（AI 生成、自定义笔记）。引用库笔记走各自预设，不动。
+function computeCribsheetFitSize(title, content) {
+    const grid = document.getElementById('cribsheet-grid');
+    const gridWidth = (grid && grid.clientWidth) ? grid.clientWidth : 700;
+    const colPx = gridWidth / CRIBSHEET_GRID_COLS;
+
+    // 宽度：按最长行估列数，夹在 [6, 14]（24 列里约占 1/4 ~ 0.58）。
+    // 等宽代码约 8px/字 @0.78rem；+30 是左右内边距的富余
+    const linesArr = (String(title || '') + '\n' + String(content || '')).split('\n');
+    const longest = linesArr.reduce((m, l) => Math.max(m, l.length), 0);
+    let cols = Math.ceil((longest * 8 + 30) / colPx);
+    cols = Math.max(6, Math.min(14, cols));
+
+    // 高度：在这个宽度下实测这张卡的自然高度，换算成行
+    const cardPx = Math.max(60, cols * colPx - 8);   // 减 GridStack 的 margin
+    const rows = measureCribsheetCardRows(title, content, cardPx);
+
+    return { id: null, cols, rows };
+}
+
+// 用【真实卡片的 class】off-screen 量一张卡在给定宽度下的高度，换算成网格行数。
+// 复用 .cribsheet-note-card 等类，量出来的高度就跟真渲染一致。
+function measureCribsheetCardRows(title, content, widthPx) {
+    const probe = document.createElement('div');
+    probe.style.cssText =
+        'position:absolute; left:-99999px; top:0; visibility:hidden; pointer-events:none; width:' + widthPx + 'px;';
+    // 覆盖 height:100%/overflow:hidden，让卡片按内容自然撑开；不放删除按钮（绝对定位，不占高）
+    probe.innerHTML =
+        '<div class="cribsheet-note-card" style="height:auto;width:100%;overflow:visible;">' +
+        '<p class="cribsheet-note-title">' + escapeHtml(String(title || '')) + '</p>' +
+        '<p class="cribsheet-note-content">' + escapeHtml(String(content || '')) + '</p>' +
+        '</div>';
+    document.body.appendChild(probe);
+    const card = probe.querySelector('.cribsheet-note-card');
+    const h = card ? card.offsetHeight : 0;   // 含内边距
+    document.body.removeChild(probe);
+
+    // +2px 余量再向上取整，避免最后一行被 overflow:hidden 卡掉；至少 2 行
+    const maxRow = getCribsheetMaxRow();
+    return Math.max(2, Math.min(maxRow, Math.ceil((h + 2) / CRIBSHEET_CELL_HEIGHT)));
 }
 
 // ---------- 双击编辑笔记 ----------

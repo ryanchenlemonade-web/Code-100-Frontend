@@ -301,138 +301,54 @@
         <button type="button" class="revision-back-btn" data-revision-nav="landing">
             <i class="fa-solid fa-arrow-left"></i> Revision Center
         </button>
-        <p class="cribsheet-intro">Drag notes onto your page, arrange them however you like, then save it as a PDF to print before your exam.</p>
+        <p class="cribsheet-intro">Generate your cheat sheet with AI or write your own, edit it inline, then print or save it as a PDF before your exam.</p>
 
-        <div class="cribsheet-builder-layout">
+        <!-- v2:文档式小抄（取代原来的 GridStack 卡片画布）。整份文档是流式多栏排版，
+             AI 生成 / 手动编辑，存成 JSON 到 /api/progress/crib-sheet。 -->
+        <div class="cribsheet-doc-layout">
 
-            <!-- 左边：笔记库 -->
-            <div class="cribsheet-library-panel">
-                <h3>Note Library</h3>
-                <input type="text" id="cribsheet-library-search" class="cribsheet-library-search" placeholder="Search notes...">
-                <div id="cribsheet-library-container">
-                    <!-- 分类 + 笔记，由 JS 动态插入 -->
+            <div class="cribsheet-doc-toolbar">
+                <button type="button" id="cribsheet-ai-generate-btn" class="cribsheet-ai-generate-btn">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> AI Cribsheet Assistant
+                </button>
+                <button type="button" id="cribsheet-doc-add-block" class="cribsheet-doc-tool-btn">
+                    <i class="fa-solid fa-plus"></i> Add block
+                </button>
+
+                <div class="cribsheet-orientation-toggle" id="cribsheet-orientation-toggle">
+                    <button type="button" class="active" data-orientation="portrait">Portrait</button>
+                    <button type="button" data-orientation="landscape">Landscape</button>
                 </div>
-                <button type="button" id="cribsheet-add-custom-btn" class="cribsheet-add-custom-btn">
-                    <i class="fa-solid fa-plus"></i> Add Custom Note
+
+                <!-- 栏数 -->
+                <div class="cribsheet-orientation-toggle" id="cribsheet-columns-toggle" title="Columns per page">
+                    <button type="button" data-columns="1">1 col</button>
+                    <button type="button" class="active" data-columns="2">2 col</button>
+                    <button type="button" data-columns="3">3 col</button>
+                </div>
+
+                <!-- 密度(字号缩放) -->
+                <label class="cribsheet-density-wrap" title="Text density">
+                    <i class="fa-solid fa-text-height"></i>
+                    <input type="range" id="cribsheet-density" min="0.8" max="1.3" step="0.05" value="1">
+                </label>
+
+                <span class="cribsheet-doc-toolbar-spacer"></span>
+                <span class="cribsheet-doc-status" id="cribsheet-doc-status"></span>
+                <button type="button" id="cribsheet-doc-clear" class="cribsheet-doc-tool-btn">Clear</button>
+                <button type="button" id="cribsheet-pdf-btn" class="cribsheet-pdf-btn">
+                    <i class="fa-solid fa-print"></i> Print / Save PDF
                 </button>
             </div>
 
-            <!-- 右边：工具栏 + 画布 -->
-            <div class="cribsheet-sheet-panel">
-                <div class="cribsheet-sheet-toolbar">
-                    <div class="cribsheet-orientation-toggle" id="cribsheet-orientation-toggle">
-                        <button type="button" class="active" data-orientation="portrait">Portrait</button>
-                        <button type="button" data-orientation="landscape">Landscape</button>
-                    </div>
-                    <div class="cribsheet-toolbar-actions">
-                        <button type="button" id="cribsheet-undo-btn" class="cribsheet-icon-btn" title="Undo"><i class="fa-solid fa-rotate-left"></i></button>
-                        <button type="button" id="cribsheet-redo-btn" class="cribsheet-icon-btn" title="Redo"><i class="fa-solid fa-rotate-right"></i></button>
-                        <button type="button" id="cribsheet-duplicate-selected-btn" class="cribsheet-icon-btn" title="Duplicate selected"><i class="fa-solid fa-clone"></i></button>
-                        <button type="button" id="cribsheet-delete-selected-btn" class="cribsheet-icon-btn" title="Delete selected"><i class="fa-solid fa-trash"></i></button>
-                        <button type="button" id="cribsheet-clear-page-btn" class="cribsheet-text-btn">Clear Page</button>
-                        <button type="button" id="cribsheet-pdf-btn" class="cribsheet-pdf-btn">
-                            <i class="fa-solid fa-file-arrow-down"></i> Save as PDF
-                        </button>
-                    </div>
-                </div>
+            <!-- 分页器:多于一页时由 JS 填充页码按钮 -->
+            <div class="cribsheet-pager" id="cribsheet-pager" style="display: none;"></div>
 
-                <div class="cribsheet-page-wrap">
-                    <div class="cribsheet-page" id="cribsheet-page">
-
-                        <!-- 纸张顶部这一行：水印 + 姓名 + 考试名。
-                             整块在纸张内部，所以会跟着一起打印出来。
-                             打印时输入框会被样式改成"下划线 + 文字"的样子，看不出是表单控件 -->
-                        <div class="cribsheet-sheet-header">
-
-                            <!-- 左上角的水印。alt 留空——它是装饰，
-                                 读屏软件念一遍 logo 对使用者没有帮助 -->
-                            <div class="cribsheet-watermark" aria-hidden="true">
-                                <img src="../../../0. images/Code 100.png" alt="">
-                                <span>Code 100</span>
-                            </div>
-
-                            <label class="cribsheet-sheet-field cribsheet-field-name">
-                                <span class="cribsheet-sheet-field-label">Name</span>
-                                <input type="text" id="cribsheet-student-name"
-                                       placeholder="Your name" maxlength="60" autocomplete="off">
-                            </label>
-                            <label class="cribsheet-sheet-field cribsheet-field-exam">
-                                <span class="cribsheet-sheet-field-label">Exam</span>
-                                <input type="text" id="cribsheet-exam-name"
-                                       placeholder="e.g. Test 1" maxlength="40" autocomplete="off">
-                            </label>
-                        </div>
-
-                        <div class="grid-stack" id="cribsheet-grid"></div>
-                        <!-- 对齐参考线画在这一层，浮在卡片上面。inset 跟网格底一样是 20px，
-                             两者用同一套坐标，画出来才对得上 -->
-                        <div class="cribsheet-guide-layer" id="cribsheet-guide-layer"></div>
-
-                        <!-- 浮动样式工具条：选中方块时浮在它正上方，跟着它走。
-                             放在 .cribsheet-page 内部用 absolute 定位——纸本身是 position: relative，
-                             所以坐标只需要算「相对纸左上角」，不碰视口、不用管祖先有没有 transform。
-                             它是覆盖层，不占文档流，画布布局不会因为它出现而移动 -->
-                        <div class="cribsheet-style-bar" id="cribsheet-style-panel">
-                            <!-- 字号：直接填数字，留空就是 Auto（用 CSS 里的默认字号）。
-                                 原来是个只能选固定几档的下拉框。
-                                 min/max 不是装饰——数据库那列是 SMALLINT，
-                                 而且填个 900 会把卡片整个撑爆，JS 那边也会再夹一次 -->
-                            <label class="cribsheet-style-size-wrap" title="Text size (leave empty for auto)">
-                                <i class="fa-solid fa-a"></i>
-                                <input type="number" id="cribsheet-style-size"
-                                       aria-label="Text size in pixels, leave empty for automatic"
-                                       placeholder="Auto" min="6" max="72" step="1">
-                            </label>
-
-                            <span class="cribsheet-style-divider"></span>
-
-                            <button type="button" id="cribsheet-style-bold" class="cribsheet-style-toggle" title="Bold" aria-label="Bold"><i class="fa-solid fa-bold"></i></button>
-                            <button type="button" id="cribsheet-style-italic" class="cribsheet-style-toggle" title="Italic" aria-label="Italic"><i class="fa-solid fa-italic"></i></button>
-
-                            <span class="cribsheet-style-divider"></span>
-
-                            <label class="cribsheet-style-swatch" title="Text color">
-                                <input type="color" id="cribsheet-style-text-color" value="#333333" aria-label="Text color">
-                                <i class="fa-solid fa-font"></i>
-                            </label>
-                            <label class="cribsheet-style-swatch" title="Fill color">
-                                <input type="color" id="cribsheet-style-bg-color" value="#f5f9fd" aria-label="Fill color">
-                                <i class="fa-solid fa-fill-drip"></i>
-                            </label>
-
-                            <span class="cribsheet-style-divider"></span>
-
-                            <button type="button" id="cribsheet-style-reset" class="cribsheet-style-toggle" title="Reset styles" aria-label="Reset styles"><i class="fa-solid fa-eraser"></i></button>
-
-                            <!-- 删除放最右边、单独隔一道线：它跟左边那些"改样式"的按钮性质不同，
-                                 是不可逆操作，不该跟它们挨在一起没有区隔。
-                                 多选时删掉的是整个选区，跟上面工具栏那个垃圾桶行为一致 -->
-                            <span class="cribsheet-style-divider"></span>
-
-                            <button type="button" id="cribsheet-style-delete" class="cribsheet-style-toggle cribsheet-style-danger" title="Delete note" aria-label="Delete selected notes"><i class="fa-solid fa-trash-can"></i></button>
-                        </div>
-                        <div class="cribsheet-canvas-empty" id="cribsheet-empty-hint">
-                            <div class="cribsheet-canvas-empty-icon"><i class="fa-solid fa-note-sticky"></i></div>
-                            <p class="cribsheet-canvas-empty-title" id="cribsheet-empty-title">Your page is empty</p>
-                            <p class="cribsheet-canvas-empty-subtext" id="cribsheet-empty-subtext">Pick a note from the library on the left to place it here. Drag to move it, or drag the bottom-right corner to resize.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 保留原来的自由文本笔记（阶段1就有的功能） -->
-                <div class="cribsheet-my-notes-section">
-                    <div class="crib-sheet-header">
-                        <h4>My Notes</h4>
-                        <div class="crib-sheet-actions">
-                            <span class="crib-sheet-status" id="crib-sheet-status"></span>
-                            <button id="crib-sheet-save-btn" class="crib-sheet-save-btn">Save</button>
-                        </div>
-                    </div>
-                    <textarea id="crib-sheet-textarea" class="crib-sheet-textarea"
-                        placeholder="Write your own notes, key formulas, or reminders here — whatever helps you review before a test."></textarea>
-                </div>
+            <div class="cribsheet-page-wrap">
+                <!-- 多页容器:排版引擎(renderCribsheetDoc)按 Letter 高度量算后,
+                     往这里塞一张张 .cribsheet-page。第 1 页含品牌 + Name/Exam。 -->
+                <div class="cribsheet-doc-pages" id="cribsheet-doc-pages"></div>
             </div>
-
         </div>
     </div>
 
@@ -448,6 +364,61 @@
                 <button type="button" id="cribsheet-custom-modal-cancel" class="cribsheet-modal-cancel-btn">Cancel</button>
                 <button type="button" id="cribsheet-custom-modal-next" class="cribsheet-modal-next-btn">Add Note</button>
             </div>
+        </div>
+    </div>
+
+    <!-- AI 生成弹窗。三种 scope:marked(我标记的题)/ paper(某张卷)/ custom(自定主题)。
+         对应字段由 JS 按 scope 显隐。生成的卡片走 addNoteToGrid 摆上画布 -->
+    <!-- AI Cribsheet Assistant:三步向导。Step1 选考试+来源 → Step2 复核推荐 topics → 生成。
+         生成的结构化内容拍平进现有编辑器(不碰编辑器/PDF)。 -->
+    <div class="cribsheet-modal-backdrop" id="cribsheet-ai-modal-backdrop" style="display: none;">
+        <div class="cribsheet-modal cribsheet-assistant-modal">
+
+            <!-- Step 1 -->
+            <div class="cribsheet-assistant-step" data-step="1">
+                <h3>Create Your Exam Cribsheet</h3>
+
+                <label for="cribsheet-ai-exam">Select exam</label>
+                <select id="cribsheet-ai-exam">
+                    <option value="Test 1">Test 1</option>
+                    <option value="Test 2">Test 2</option>
+                    <option value="Test 3">Test 3</option>
+                    <option value="Final Test">Final Exam</option>
+                </select>
+
+                <label>Generate from</label>
+                <label class="cribsheet-check"><input type="checkbox" id="cribsheet-ai-src-bank" checked> Exam question bank</label>
+                <label class="cribsheet-check"><input type="checkbox" id="cribsheet-ai-src-marked"> My marked questions <span class="cribsheet-check-hint">(needs sign in)</span></label>
+
+                <label>Paper size</label>
+                <div class="cribsheet-static-field">Letter</div>
+
+                <p class="cribsheet-ai-status" id="cribsheet-ai-status"></p>
+                <div class="cribsheet-modal-actions">
+                    <button type="button" id="cribsheet-ai-cancel" class="cribsheet-modal-cancel-btn">Cancel</button>
+                    <button type="button" id="cribsheet-ai-analyze" class="cribsheet-modal-next-btn">Analyze My Exam</button>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="cribsheet-assistant-step" data-step="2" style="display: none;">
+                <h3>Recommended Topics</h3>
+                <p class="cribsheet-assistant-note">Based on your exam, these topics are most likely important. Remove any you don't need, or add your own.</p>
+
+                <div id="cribsheet-ai-topics" class="cribsheet-topic-list"></div>
+
+                <div class="cribsheet-topic-add">
+                    <input type="text" id="cribsheet-ai-topic-new" placeholder="Add a topic…">
+                    <button type="button" id="cribsheet-ai-topic-add-btn" class="cribsheet-doc-tool-btn">Add</button>
+                </div>
+
+                <p class="cribsheet-ai-status" id="cribsheet-ai-status2"></p>
+                <div class="cribsheet-modal-actions">
+                    <button type="button" id="cribsheet-ai-back" class="cribsheet-modal-cancel-btn">Back</button>
+                    <button type="button" id="cribsheet-ai-generate2" class="cribsheet-modal-next-btn">Generate My Cribsheet</button>
+                </div>
+            </div>
+
         </div>
     </div>
 

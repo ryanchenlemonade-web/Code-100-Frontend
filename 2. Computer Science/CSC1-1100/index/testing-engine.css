@@ -1645,10 +1645,10 @@ body.exam-result-mode .self-assess-box {
 
 .cribsheet-intro {
     max-width: 62ch;
-    margin: 0 0 28px;
+    margin: 2px 0 12px;   /* 收紧:别让顶部空一大片,整体往上提 */
     color: var(--cs-ink-soft);
     font-size: 0.9rem;
-    line-height: 1.6;
+    line-height: 1.5;
 }
 
 /* 左窄右宽。左边收窄一点、间距拉开，让视线更快落到纸上 */
@@ -2050,7 +2050,7 @@ body.exam-result-mode .self-assess-box {
        padding 0.4in 是页边距：真实打印机边缘有一圈印不到的区域，
        @page 的 margin 设成了 0，所以边距得由纸张自己提供 */
     width: 8.5in;
-    height: 11in;
+    min-height: 11in;   /* 一整页高;内容排版引擎已按此分页,超出也不裁(见 overflow) */
     flex-shrink: 0;
     margin: 0 auto;
     /* 这两行是"纸张是固定尺寸"的最后一道保障。
@@ -2058,7 +2058,7 @@ body.exam-result-mode .self-assess-box {
        aspect-ratio 只是个建议值。加上 overflow: hidden 之后，
        纸的比例和 Letter 严格一致，多出来的部分直接裁掉。
        真正防止"放到纸外面"的是 GridStack 的 maxRow（见 getCribsheetMaxRow） */
-    overflow: hidden;
+    overflow: visible;   /* 不裁:排版靠 JS 分页,万一略超也别丢内容 */
     padding: 0.4in;
     background: var(--cs-raised);
     border-radius: 3px;
@@ -2073,7 +2073,7 @@ body.exam-result-mode .self-assess-box {
 /* 横版就是把两个数对调：Letter 横放是 11in × 8.5in */
 .cribsheet-page.landscape {
     width: 11in;
-    height: 8.5in;
+    min-height: 8.5in;
 }
 
 /* 拖动/缩放时浮出来的网格底。平时 opacity 是 0，纸就是白纸一张。
@@ -2627,6 +2627,8 @@ body.exam-result-mode .self-assess-box {
 }
 
 .cribsheet-modal input[type="text"],
+.cribsheet-modal input[type="number"],
+.cribsheet-modal select,
 .cribsheet-modal textarea {
     width: 100%;
     padding: 8px 10px;
@@ -2635,6 +2637,132 @@ body.exam-result-mode .self-assess-box {
     font-size: 0.88rem;
     font-family: inherit;
     box-sizing: border-box;
+}
+
+/* AI 生成按钮:跟"Add Custom Note"同宽同位,但用实心强调色 + ✨ 图标，
+   让它一眼是"生成"而不是"再加一张空白卡" */
+.cribsheet-ai-generate-btn {
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px;
+    border: none;
+    border-radius: var(--cs-radius);
+    background: hsl(212, 90%, 52%);
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: inherit;
+    transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.cribsheet-ai-generate-btn:hover {
+    background: hsl(212, 90%, 46%);
+}
+
+.cribsheet-ai-generate-btn i {
+    margin-right: 6px;
+}
+
+/* 生成过程/报错的提示行 */
+.cribsheet-ai-status {
+    min-height: 1.1em;
+    margin: 12px 0 0;
+    font-size: 0.82rem;
+    color: var(--cs-ink-soft, #666);
+}
+
+.cribsheet-ai-status.is-error {
+    color: hsl(0, 60%, 45%);
+}
+
+/* ---------- AI Cribsheet Assistant 向导 ---------- */
+.cribsheet-assistant-modal { max-width: 460px; }
+
+.cribsheet-assistant-note {
+    margin: 0 0 12px;
+    font-size: 0.85rem;
+    color: var(--cs-ink-soft, #667);
+    line-height: 1.45;
+}
+
+.cribsheet-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+.cribsheet-check input { width: auto; }
+.cribsheet-check-hint { color: hsl(220, 12%, 60%); font-weight: 400; font-size: 0.8rem; }
+
+.cribsheet-static-field {
+    padding: 8px 10px;
+    border: 1px dashed hsl(220, 20%, 85%);
+    border-radius: 8px;
+    font-size: 0.88rem;
+    color: hsl(220, 15%, 45%);
+    background: hsl(220, 30%, 98%);
+}
+
+/* 推荐 topic 列表 */
+.cribsheet-topic-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 6px 0 10px;
+}
+.cribsheet-topic-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border: 1px solid hsl(220, 20%, 90%);
+    border-radius: 8px;
+    background: #fff;
+}
+.cribsheet-topic-stars {
+    flex-shrink: 0;
+    color: hsl(38, 92%, 50%);
+    font-size: 0.82rem;
+    letter-spacing: 1px;
+}
+.cribsheet-topic-name {
+    flex: 1 1 auto;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: hsl(220, 25%, 22%);
+}
+.cribsheet-topic-remove {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: hsl(0, 70%, 96%);
+    color: hsl(0, 55%, 50%);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.cribsheet-topic-remove:hover { background: hsl(0, 75%, 92%); }
+
+.cribsheet-topic-add {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.cribsheet-topic-add input { flex: 1 1 auto; }
+
+/* 生成中禁用态 */
+.cribsheet-modal-next-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .cribsheet-size-hint {
@@ -4415,4 +4543,376 @@ body.exam-focus-mode .exam-layout {
 #testing-back-to-top-btn {
     display: block;
     margin: 32px auto 48px;
+}
+/* ==========================================================================
+   文档式 Cribsheet（v2）—— 取代 GridStack 卡片画布
+   一张流式多栏文档：AI 生成 / 手动编辑，密排、天然分页、打印稳
+   ========================================================================== */
+.cribsheet-doc-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.cribsheet-doc-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    /* 横幅型:整条做成一根贯通的工具条,不是几颗散按钮 */
+    padding: 10px 14px;
+    background: hsl(220, 32%, 97%);
+    border: 1px solid hsl(220, 22%, 90%);
+    border-radius: 12px;
+    margin-bottom: 16px;
+}
+
+.cribsheet-doc-toolbar-spacer { flex: 1 1 auto; }
+
+.cribsheet-doc-tool-btn {
+    padding: 8px 14px;
+    border: 1px solid hsl(220, 15%, 85%);
+    border-radius: 8px;
+    background: #fff;
+    color: hsl(220, 15%, 30%);
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.cribsheet-doc-tool-btn:hover { background: hsl(220, 20%, 96%); border-color: hsl(220, 15%, 72%); }
+
+.cribsheet-doc-status {
+    font-size: 0.78rem;
+    color: hsl(220, 10%, 55%);
+    min-width: 60px;
+    text-align: right;
+}
+
+/* 纸张。屏幕上是一张 Letter 宽的白纸，内容多了就往下长（= 打印时的第 2 页）。
+   多栏用 column-width，纸多宽就自动排几栏 */
+.cribsheet-doc {
+    width: 816px;              /* 8.5in @96dpi */
+    max-width: 100%;
+    margin: 0 auto;
+    min-height: 1056px;        /* 11in，至少一页高 */
+    box-sizing: border-box;
+    padding: 40px 44px;
+    background: #fff;
+    border: 1px solid hsl(220, 20%, 90%);
+    border-radius: 6px;
+    box-shadow: 0 4px 20px hsla(220, 30%, 25%, 0.10);
+    color: #1c2530;
+}
+.cribsheet-doc.landscape {
+    width: 1056px;             /* 11in */
+    min-height: 816px;         /* 8.5in */
+}
+
+.cribsheet-doc-header {
+    display: flex;
+    align-items: center;   /* 品牌区和 Name/Exam 同一条中线,别再 flex-end 让大 logo 跟小字底对底 */
+    gap: 24px;
+    padding-bottom: 12px;
+    margin-bottom: 14px;
+    border-bottom: 2px solid hsl(220, 30%, 20%);
+}
+/* 顶部品牌区:做大、不淡化——这是要印在每个学生带进考场的小抄上的，顺带宣传。
+   opacity 显式设 1，盖过 .cribsheet-watermark 基类的 0.5 */
+.cribsheet-doc-header .cribsheet-watermark {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    opacity: 1;
+    font-size: 2rem;          /* 放大到跟 logo 体量相称,原来 1.5rem 太小、跟 46px logo 不成比例 */
+    font-weight: 800;
+    line-height: 1;           /* 去掉行高留白,文字才能跟 logo 真正居中对齐 */
+    letter-spacing: -0.01em;
+    color: hsl(214, 84%, 44%);
+    white-space: nowrap;
+}
+.cribsheet-doc-header .cribsheet-watermark img { width: 48px; height: 48px; }
+
+/* Name / Exam:改成「Label: ____」——冒号 + 下划线，没有方框。
+   屏幕上可编辑，打印时就是一条干净的横线，不带表单框感。 */
+.cribsheet-doc-header .cribsheet-sheet-field {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+}
+.cribsheet-doc-header .cribsheet-sheet-field-label {
+    flex-shrink: 0;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
+    color: hsl(220, 20%, 30%);
+}
+.cribsheet-doc-header .cribsheet-sheet-field-label::after { content: ':'; }
+.cribsheet-doc-header .cribsheet-sheet-field input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 100px;
+    border: none;
+    border-bottom: 1px solid hsl(220, 25%, 55%);
+    border-radius: 0;
+    background: none;
+    padding: 1px 3px 2px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    color: hsl(220, 25%, 15%);
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+.cribsheet-doc-header .cribsheet-sheet-field input[type="text"]:focus {
+    border-bottom-color: hsl(214, 84%, 55%);
+}
+.cribsheet-doc-header .cribsheet-sheet-field input[type="text"]::placeholder {
+    color: hsl(220, 12%, 72%);
+}
+
+/* 多栏流式正文。column-width 让纸越宽栏越多；块不跨栏断开 */
+.cribsheet-doc-body {
+    column-width: 232px;
+    column-gap: 22px;
+    column-rule: 1px solid hsl(220, 20%, 92%);
+}
+
+.cribsheet-doc-block {
+    break-inside: avoid;
+    position: relative;
+    margin: 0 0 12px;
+    padding: 11px 13px;   /* 多点留白,看着舒服 */
+    border: 1px solid hsl(220, 20%, 92%);
+    border-radius: 8px;
+    background: hsl(210, 40%, 99%);
+}
+
+/* 标题 / 头部也带上中文字体回退,理由同正文(打印时中文才不会空白) */
+.cribsheet-doc-block-title,
+.cribsheet-doc-header {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+}
+
+/* 字号用 em:相对于栏容器的 font-size(= 排版引擎按密度设的 baseFont),
+   这样密度滑块一拖,标题正文一起缩放,测量和渲染也一致 */
+.cribsheet-doc-block-title {
+    font-size: 1.08em;
+    font-weight: 700;
+    color: hsl(212, 45%, 32%);
+    margin-bottom: 5px;
+    letter-spacing: 0.01em;
+    outline: none;
+}
+.cribsheet-doc-block-content {
+    font-size: 0.95em;
+    line-height: 1.55;   /* 行距松一点,代码分行后不挤 */
+    white-space: pre-wrap;      /* 保留代码换行/缩进 */
+    word-break: break-word;
+    /* ⚠️ 等宽栈后面【必须】跟上中文字体回退。纯 monospace 通用族在打印/导出 PDF 时
+       不一定回退到系统中文字体,中文会印成空白。显式列出 CJK 字体,屏幕和打印都稳。 */
+    font-family: "SF Mono", Menlo, Consolas,
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", monospace;
+    outline: none;
+}
+
+/* 空 contenteditable 的占位提示 */
+.cribsheet-doc-block-title:empty::before,
+.cribsheet-doc-block-content:empty::before {
+    content: attr(data-placeholder);
+    color: hsl(220, 12%, 68%);
+}
+
+/* 编辑时高亮当前块 */
+.cribsheet-doc-block:focus-within {
+    border-color: hsl(212, 70%, 70%);
+    background: #fff;
+}
+
+/* 删除按钮：悬停块时才显；打印隐藏 */
+.cribsheet-doc-block-del {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: hsl(0, 45%, 55%);
+    font-size: 0.7rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+.cribsheet-doc-block:hover .cribsheet-doc-block-del { opacity: 1; }
+.cribsheet-doc-block-del:hover { background: hsl(0, 70%, 95%); }
+
+.cribsheet-doc-empty {
+    margin: 40px 0;
+    text-align: center;
+    color: hsl(220, 12%, 60%);
+    font-size: 0.9rem;
+}
+
+/* ---------- 多页排版引擎:容器 / 页 / 栏 / 控件 ---------- */
+.cribsheet-doc-pages {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;          /* 页与页之间的间距 */
+}
+
+.cribsheet-page-cols {
+    display: flex;
+    align-items: flex-start;
+}
+.cribsheet-page-col {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* 页码,纸右下角 */
+.cribsheet-page-no {
+    position: absolute;
+    bottom: 0.18in;
+    right: 0.4in;
+    font-size: 0.62rem;
+    color: hsl(220, 12%, 62%);
+}
+
+/* 每块的悬浮控制(上移/下移/删),打印隐藏 */
+.cribsheet-doc-block-tools {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+.cribsheet-doc-block:hover .cribsheet-doc-block-tools,
+.cribsheet-doc-block:focus-within .cribsheet-doc-block-tools { opacity: 1; }
+.cribsheet-doc-block-tools button {
+    width: 18px; height: 18px; padding: 0;
+    border: none; border-radius: 4px;
+    background: hsl(220, 30%, 94%);
+    color: hsl(220, 20%, 40%);
+    font-size: 0.6rem; cursor: pointer;
+}
+.cribsheet-doc-block-tools button:hover { background: hsl(220, 40%, 88%); }
+.cribsheet-doc-block-tools button[data-act="del"] { color: hsl(0, 55%, 50%); }
+
+/* 每块右下角的拖拽调大小手柄:悬停块时才显,打印隐藏 */
+.cribsheet-doc-block-resize {
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    /* 右下角两道斜线,像常见的 resize 抓手 */
+    background:
+        linear-gradient(135deg, transparent 0 45%, hsl(220, 20%, 60%) 45% 55%, transparent 55% 100%),
+        linear-gradient(135deg, transparent 0 70%, hsl(220, 20%, 60%) 70% 80%, transparent 80% 100%);
+    touch-action: none;
+}
+.cribsheet-doc-block:hover .cribsheet-doc-block-resize,
+.cribsheet-doc-block.is-resizing .cribsheet-doc-block-resize { opacity: 0.8; }
+.cribsheet-doc-block.is-resizing {
+    outline: 2px solid hsl(212, 84%, 60%);
+    outline-offset: -1px;
+}
+
+/* 分页器 */
+.cribsheet-pager {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.cribsheet-pager-label { font-size: 0.78rem; color: var(--cs-ink-soft); margin-right: 4px; }
+.cribsheet-pager-btn {
+    min-width: 28px; height: 28px; padding: 0 8px;
+    border: 1px solid hsl(220, 20%, 85%);
+    border-radius: 7px; background: #fff;
+    font-size: 0.8rem; font-weight: 600; cursor: pointer;
+    color: hsl(220, 20%, 35%);
+}
+.cribsheet-pager-btn:hover { border-color: hsl(212, 70%, 60%); color: hsl(212, 70%, 45%); }
+
+/* 密度滑块 */
+.cribsheet-density-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: hsl(220, 15%, 45%);
+}
+.cribsheet-density-wrap input[type="range"] { width: 90px; }
+
+/* ---------- 打印:每张 .cribsheet-page 印成一张真纸 ---------- */
+@media print {
+    /* ⚠️ 空白页根因:祖先层带 transform / overflow / 高度上限,会把打印子树整页吞掉。
+       这里清掉祖先链上这三样。【只碰 transform/overflow/height,不动 display】——
+       动 display 会把隐藏的其它板块也印出来(见下面 3088 那段告诫)。
+       JS 在 beforeprint 里还会再强清一遍 inline(见 stripCribsheetPrintClippers)。 */
+    #content-container,
+    #testing-content,
+    .content,
+    #revision-content,
+    #revision-view-cribsheet,
+    .cribsheet-doc-layout,
+    .cribsheet-page-wrap,
+    .cribsheet-doc-pages {
+        transform: none !important;
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+    }
+
+    /* 编辑用的控件不打印 */
+    .cribsheet-doc-toolbar,
+    .cribsheet-pager,
+    .cribsheet-doc-block-tools,
+    .cribsheet-doc-block-resize,
+    .cribsheet-page-no,
+    .cribsheet-doc-empty {
+        display: none !important;
+    }
+
+    .cribsheet-doc-layout,
+    .cribsheet-doc-layout .cribsheet-page-wrap,
+    .cribsheet-doc-pages {
+        display: block !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        gap: 0 !important;
+        background: none !important;
+    }
+
+    /* 保留 .cribsheet-page 的 8.5in 宽 + 0.4in padding —— 屏幕上按这个排的,
+       打印也按这个,所见即所得。@page margin 设 0,让纸的 padding 就是页边距(不叠加)。
+       去掉投影/圆角,每页之后强制分页。 */
+    .cribsheet-page {
+        margin: 0 auto !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        break-after: page;
+        page-break-after: always;
+    }
+    .cribsheet-page:last-child {
+        break-after: auto;
+        page-break-after: auto;
+    }
+    .cribsheet-doc-block {
+        break-inside: avoid;
+        background: none !important;
+    }
+
+    @page { size: letter; margin: 0; }
 }

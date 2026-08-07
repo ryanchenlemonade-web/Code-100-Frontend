@@ -4,6 +4,7 @@
 > 这一版：成绩落库 + Previous attempts + Scoring Detail + 整卷难度评分**后端都已部署跑通**
 > （不再是"差跑 SQL"）；新增了**改卷阶段**（自评期间不亮分）、admin 的**课程切换 /
 > 年份分组 / points·rubric 录入**，以及 Cribsheet 笔记库的处置决定。
+> **新增了本地 AI 引擎（Ollama/qwen3）+ 第一个 AI 功能：cribsheet 生成**——见下面「本地 AI 引擎」节。
 
 ## 项目
 
@@ -15,6 +16,50 @@ RPI CS1（CSCI-1100）刷题网站，学生用来练历年真题。
 - **Admin** 独立页面 `1. Admin/`（密钥门禁 `X-Admin-Key`），录题/建卷/管理
 
 三个板块：**Practice**（按题型刷题）、**Examination**（限时模拟考）、**Revision**（标记的题 + Cribsheet 小抄生成器）。
+
+---
+
+## 本地 AI 引擎（Ollama / qwen3）
+
+**目标**：一个可被 Code100 所有 AI 功能复用的底座，以后换 OpenAI/Claude/Gemini 只加实现类、不改业务。
+
+**链路**：`Controller → AIService(接口) → OllamaAIService → RestClient → Ollama(http://localhost:11434) → qwen3:8b`
+
+**依赖 Ollama 在跑**（Mac 上菜单栏 app，开机自起；`curl localhost:11434/api/tags` 验活）。地址/模型**不写死**，在 `application.properties` 的 `ai.ollama.*`（可用 `OLLAMA_URL`/`OLLAMA_MODEL` 环境变量覆盖）。
+
+**后端文件**（都在 `~/Code100_Database_Connection/.../ai/`，全构造器注入，无字段注入）：
+
+| 位置 | 作用 |
+|---|---|
+| `ai/service/AIService.java` | 通用接口 `chat(String)→String`。**业务只依赖它** |
+| `ai/service/impl/OllamaAIService.java` | 唯一懂 Ollama 协议的地方。设 `stream:false`+`think:false`，兜底正则剥 `<think>` |
+| `ai/config/AIProperties.java` / `AIConfig.java` | 绑 `ai.ollama.*`；造带超时的 `RestClient` Bean |
+| `ai/dto/AIRequest.java` / `AIResponse.java` | 对前端契约 `{message}`→`{answer}`，换 provider 不变 |
+| `ai/exception/AIServiceException.java` | provider 层统一异常，Controller 转 503 |
+| `ai/controller/AIController.java` | `POST /api/ai/chat`（通用聊天，**当前公开无鉴权**） |
+
+**接口**：
+- `POST /api/ai/chat` body `{message}` → `{answer}`。通用。
+- `POST /api/ai/cribsheet` → 见下。
+
+### 第一个 AI 功能：cribsheet 生成
+
+`ai/cribsheet/`：`CribsheetAIController` + `CribsheetGenerationService` + 3 DTO。
+`POST /api/ai/cribsheet` body `{scope, paperId?, topic?, count?}` → `{notes:[{title,content}]}`。
+
+- **scope**：`custom`（自定主题）/ `marked`（本人标记题，**需 JWT**）/ `paper`（某张卷）。鉴权**可选**：只有 `marked` 必须带 token。
+- 服务层按 scope 捞素材（marked=starred 题、paper=该卷题、custom=主题文本）→ 拼 prompt → `aiService.chat()` → **解析 LLM 返回的 JSON 数组**（截 `[`…`]`、解析失败兜底成一张整块笔记）。
+- 素材上限：`MAX_QUESTIONS=12`、答案截 800 字，防 prompt 撑爆 8B。
+
+**前端**（`cribsheet-builder.js` / `skeleton.html` / `testing-engine.css`）：
+Revision → Cribsheet Builder 左侧「✨ Generate with AI」按钮 + 弹窗（选 scope/主题/卷/数量）。生成的卡片走**现有** `addNoteToGrid` **追加**到画布，不覆盖。`ObjectMapper` 在服务里**自建静态实例**——Boot 4 默认没暴露 `ObjectMapper` bean，注入会启动失败。
+
+### ⚠️ AI 相关的坑 / 待办
+
+- **`/api/ai/*` 现在公开无鉴权、无限流**。`/api/ai/chat` 完全公开；`/api/ai/cribsheet` 仅 `marked` 需登录。上线前在两个 Controller 预留的钩子处加 JWT + 限流——否则本地/GPU 模型会被白嫖刷爆。
+- **改后端 Java 必须重启**（无热重载）。AI 代码改完不重启 = 旧接口。
+- qwen3 默认带 `<think>`，靠 `think:false`+正则双保险剥掉；换非思考模型时 `think:false` 可能报 400，注意。
+- Ollama 没开时 `/api/ai/*` 返回 **503**；前端 cribsheet 弹窗会显示红字提示。
 
 ---
 
