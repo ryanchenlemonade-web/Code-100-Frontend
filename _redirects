@@ -1,0 +1,7 @@
+# Cloudflare Pages 专用重定向规则（本地 Live Server 会忽略这个文件）。
+#
+# 根路径 "/" 服务端直接重定向到首页，用【绝对路径】。
+# 这样线上根路径不再依赖 index.html 里的相对跳转——相对跳转在 Pages 上
+# 会跟 ".html→干净URL" 的 308 和"找不到就回退"叠加成越变越长的死循环。
+# 本地不受影响：Live Server 不读 _redirects，仍走 index.html 的相对跳转。
+/    /1.%20Home%20Page/home_page.html    302
