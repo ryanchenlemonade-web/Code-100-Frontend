@@ -2,15 +2,27 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Code 100</title>
-    <!-- Cloudflare Pages 对不存在的路径会用这个 404 页面。用【绝对路径】跳回首页——
-         绝不能用相对路径:相对路径会在错误的深层 URL 上再叠加一层,越跳越深。 -->
-    <meta http-equiv="refresh" content="0; url=/1.%20Home%20Page/home_page.html">
-    <script>
-        window.location.replace("/1.%20Home%20Page/home_page.html");
-    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Page not found · Code 100</title>
+    <style>
+        body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+               background: hsl(220, 30%, 97%); color: hsl(220, 20%, 25%); text-align: center; }
+        .box { padding: 40px; }
+        h1 { font-size: 3rem; margin: 0 0 8px; color: hsl(212, 84%, 50%); }
+        p  { font-size: 1rem; margin: 0 0 24px; color: hsl(220, 12%, 45%); }
+        a  { display: inline-block; padding: 11px 22px; border-radius: 10px;
+             background: hsl(212, 84%, 50%); color: #fff; text-decoration: none; font-weight: 600; }
+    </style>
 </head>
 <body>
-    <p>Page not found. Redirecting to <a href="/1.%20Home%20Page/home_page.html">Code 100</a>…</p>
+    <!-- ⚠️ 静态页,【不自动跳转】。之前用 meta refresh / JS 自动跳会造成刷新死循环:
+         某路径 404 -> 跳走 -> 又 404 -> 无限刷新。改成让用户手动点。
+         链接用【绝对路径】:404 可能发生在任意深路径,相对链接会解析错。 -->
+    <div class="box">
+        <h1>404</h1>
+        <p>This page doesn't exist.</p>
+        <a href="/1.%20Home%20Page/home_page.html">Back to Code 100</a>
+    </div>
 </body>
 </html>
