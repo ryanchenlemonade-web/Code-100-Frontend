@@ -28,10 +28,21 @@ const contentContainer = document.getElementById('content-container');
 // 用委托是因为切换 Test 分类时，骨架会通过 contentContainer.innerHTML 整个重新生成一份，
 // 里面的按钮都是全新的 DOM 节点——如果直接绑在按钮本身，切一次 Test 分类监听器就失效了；
 // 绑在 contentContainer 这个不会被替换的外层元素上，就不用管里面的按钮换了多少轮
+// Cribsheet Builder 还在打磨，暂不对外开放：非本地（线上）给 body 上锁——
+// 卡片会标 "Coming soon" 且不可点（见 CSS 的 body.cribsheet-locked）。
+// 本地（localhost / 127.0.0.1）不上锁，方便继续开发。想上线时删掉这段即可。
+if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
+    document.body.classList.add('cribsheet-locked');
+}
+
 contentContainer.addEventListener('click', (e) => {
     const navBtn = e.target.closest('[data-revision-nav]');
     if (!navBtn) return;
     e.preventDefault();
+    // 上锁时挡住 Cribsheet Builder 的入口（pointer-events 已经挡了一道，这里兜底）
+    if (navBtn.dataset.revisionNav === 'cribsheet' && document.body.classList.contains('cribsheet-locked')) {
+        return;
+    }
     showRevisionView(navBtn.dataset.revisionNav);
 });
 

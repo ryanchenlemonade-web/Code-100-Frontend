@@ -325,6 +325,16 @@ function buildQuestionBlock(question, options = {}) {
         labelRow.appendChild(typeTag);
     }
 
+    // 知识点标签（admin 录的 topic，比如 "Loops"/"Recursion"）。让学生看到这道题考什么。
+    // 只在 Practice / Revision 显示（showTopic），考试期间不加——避免干扰/剧透。
+    // 只有真的录了 topic 才显示，空的不摆。
+    if (options.showTopic && question.topic && question.topic.trim()) {
+        const topicTag = document.createElement('span');
+        topicTag.className = 'question-topic-tag';
+        topicTag.innerHTML = `<i class="fa-solid fa-tag"></i>${question.topic.trim()}`;
+        labelRow.appendChild(topicTag);
+    }
+
     // 难度徽章。只有真的有人评过分才显示——没有评分记录时 avg_rating 是空的，
     // 那就什么都不放，不编一个默认难度出来
     if (options.showDifficulty && question.rating_count) {
@@ -600,7 +610,7 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
                 });
 
                 data.forEach((question, index) => {
-                    const wrapper = buildQuestionBlock(question, { showYear: true, showType, displayNumber: index + 1, showStar: true, showRating: true, showDifficulty: true, collapseLongCode: true });
+                    const wrapper = buildQuestionBlock(question, { showYear: true, showType, showTopic: true, displayNumber: index + 1, showStar: true, showRating: true, showDifficulty: true, collapseLongCode: true });
 
                     if (question.question_solution) {
                         const toggleBtn = document.createElement('button');
@@ -2745,9 +2755,11 @@ function loadPreviousAttempts(paperId) {
     const comingSoon = () => renderAttemptsPlaceholder(list, 'Previous attempts will show here.', 'Coming soon');
     // 接口在、但这人确实没考过：诚实空态，不是 Coming soon
     const empty = () => renderAttemptsPlaceholder(list, 'No previous attempts yet.', null);
+    // 没登录：功能是有的，只是得先登录才能拿"你自己的"历史——别用 "Coming soon" 误导成"没做"
+    const signIn = () => renderAttemptsPlaceholder(list, 'Sign in to see your previous attempts.', null);
 
     const token = localStorage.getItem('csci1100_auth_token');
-    if (!token) { comingSoon(); return; }   // 没登录，拿不到"我的历史"
+    if (!token) { signIn(); return; }   // 没登录，拿不到"我的历史"
 
     fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/attempts`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -2936,6 +2948,9 @@ function refreshScoringDetail(paperId) {
 
     // Ranking 走单独的鉴权接口（要知道"你"是谁），跟 score-stats 并行拉
     applyRanking(paperId);
+
+    // Your score 那一格填组合总分(自动+自评)——不依赖 score-stats,用本场分数现算
+    applyYourScoreOverall();
 }
 
 // 本场"总体"得分率 =（自动得分+自评得分）/（自动满分+自评满分）。
@@ -2946,6 +2961,33 @@ function computeOverallYou() {
     const totalMax = (auto.max || 0) + (selfMax || 0);
     if (totalMax <= 0) return null;
     return Math.round(((auto.points || 0) + (selfPoints || 0)) / totalMax * 100);
+}
+
+// Your score 那一格：显示【组合总分】(自动+自评),交卷/改完后由 refreshScoringDetail 调。
+// 之前只填自动分——没有自动判分题时就一直挂 "—",而学生其实已经自评出了分,不现实。
+// 现在:只要有可计分内容(自动或自评任一)就显示真实总分;两边都没有才保持 "—"。
+function applyYourScoreOverall() {
+    const card = document.querySelector('.exam-analytics-card.is-primary');
+    if (!card) return;
+
+    const overall = computeOverallYou();
+    if (overall == null) return;   // 既无自动、也无自评分值:真的无从算,保持 "—" + setNoAutoScore 的说明
+
+    card.classList.add('has-real-score');
+    const scoreEl = card.querySelector('.exam-stat .exam-stat-value');   // 第一格 = Your score
+    if (scoreEl) scoreEl.innerHTML = `${overall}<span class="exam-stat-unit">%</span>`;
+
+    // 注脚说明总分构成,别让人以为是纯自动分
+    const auto = lastAutoScore || { points: 0, max: 0 };
+    const { selfPoints, selfMax } = collectSelfTotal();
+    const parts = [];
+    if (auto.max > 0) parts.push(`auto ${Math.round(auto.points / auto.max * 100)}%`);
+    if (selfMax > 0) parts.push(`self-marked ${Math.round(selfPoints / selfMax * 100)}%`);
+    let note = card.querySelector('.exam-score-note');
+    if (!note) { note = document.createElement('p'); note.className = 'exam-score-note'; card.appendChild(note); }
+    note.textContent = parts.length > 1
+        ? `Combined score — ${parts.join(' + ')}.`
+        : (parts.length === 1 ? `Based on your ${parts[0].includes('self') ? 'self-marking' : 'auto-checked answers'}.` : '');
 }
 
 // Your performance 卡里的 You / Global 总体对比条。
@@ -2991,23 +3033,39 @@ function applyGlobalAverageNote(stats) {
 function applyRanking(paperId) {
     const el = document.querySelector('[data-ranking-value]');
     if (!el) return;
+    const stat = el.closest('.exam-stat');
+
+    // 清掉上一次的名次配色，避免重考/换卷串色
+    el.classList.remove('rank-gold', 'rank-silver', 'rank-bronze', 'rank-plain');
 
     const token = getToken();
-    if (!token) { el.textContent = '—'; return; }
+    if (!token) {
+        // ⚠️ 未登录:整格【隐藏】,不是显示 "—"。排名是"你在全体里的位次",
+        // 没登录根本谈不上——藏掉比摆个空杠更干净、也不误导
+        if (stat) stat.style.display = 'none';
+        return;
+    }
+    if (stat) stat.style.removeProperty('display');   // 登录了就把这一格放出来
 
     fetch(`${APP_API_BASE}/api/progress/exams/${paperId}/my-ranking`, {
         headers: { 'Authorization': `Bearer ${token}` }
     })
         .then(res => res.ok ? res.json() : null)
         .then(r => {
-            if (!r || r.top_percent == null || Number(r.out_of) < 2) {
+            const rank = r && r.rank != null ? Number(r.rank) : null;
+            const outOf = r ? Number(r.out_of) || 0 : 0;
+            if (rank == null) {
+                // 这次没有可计分内容(既没自动判、也没录自评分值)→ 没法排名
                 el.textContent = '—';
-                el.title = (r && Number(r.out_of) < 2)
-                    ? 'Not enough students have taken this paper yet' : '';
+                el.title = '';
                 return;
             }
-            el.innerHTML = `Top ${Number(r.top_percent)}<span class="exam-stat-unit">%</span>`;
-            el.title = `Rank ${r.rank} of ${r.out_of}`;
+            // 显示【名次】而不是百分位——只有你一个人考也照样是 "#1"(事实名次,不是编的)。
+            // 配色跟 Leaderboard 一致:1 金 / 2 银 / 3 铜 / 其余中性蓝
+            el.textContent = `#${rank}`;
+            el.classList.add(rank === 1 ? 'rank-gold' : rank === 2 ? 'rank-silver'
+                : rank === 3 ? 'rank-bronze' : 'rank-plain');
+            el.title = `Rank ${rank} of ${outOf} student${outOf === 1 ? '' : 's'}`;
         })
         .catch(() => { el.textContent = '—'; });
 }
@@ -3609,6 +3667,7 @@ function renderFilteredRevisionList() {
         const wrapper = buildQuestionBlock(question, {
             showYear: true,
             showType: true,
+            showTopic: true,
             displayNumber: index + 1,
             showStar: true,
             showGoToQuestion: true,
