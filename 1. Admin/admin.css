@@ -524,13 +524,18 @@ td.description-cell {
 .admin-content {
     flex: 1;
     padding: 32px 40px 80px;
-    max-width: 960px;
+    /* 去掉 max-width：让主区填满侧栏右边的空间。宽度收窄 + 居中改到 .admin-section 上做，
+       否则内容会被卡在 960px 且紧贴侧栏靠左，右边空一大片、看着别扭 */
 }
 
 .admin-section {
     display: none;
     flex-direction: column;
     gap: 24px;
+    /* 面板整体居中 + 收窄——内容不再靠左,两边留白对称,看着舒服 */
+    width: 100%;
+    max-width: 880px;
+    margin: 0 auto;
 }
 
 .admin-section.active {
