@@ -139,6 +139,162 @@ button {
     background-color: hsl(212, 100%, 34%);
 }
 
+/* ---------- Import Exam (AI 批量导入) ---------- */
+.admin-primary-btn {
+    background-color: var(--admin-blue);
+    color: #fff;
+}
+.admin-primary-btn:hover { background-color: hsl(212, 100%, 34%); }
+.admin-primary-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* 已选文件:一排可删的小卡片 */
+.import-file-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 14px;
+}
+.import-file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 8px 5px 11px;
+    background: hsl(212, 60%, 96%);
+    border: 1px solid hsl(212, 45%, 85%);
+    border-radius: 999px;
+    font-size: 0.82rem;
+    color: var(--admin-text);
+    max-width: 260px;
+}
+.import-file-chip i { color: hsl(212, 50%, 50%); }
+/* 已解析过的图:变淡 + 绿勾,提示 Parse 会跳过它 */
+.import-file-chip.is-parsed {
+    background: hsl(145, 40%, 96%);
+    border-color: hsl(145, 35%, 82%);
+    color: var(--admin-ink-soft, #777);
+}
+.import-file-chip.is-parsed i { color: hsl(145, 50%, 42%); }
+.import-file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.import-file-remove {
+    padding: 0;
+    width: 18px;
+    height: 18px;
+    line-height: 1;
+    border-radius: 50%;
+    background: hsl(0, 60%, 92%);
+    color: hsl(0, 55%, 42%);
+    font-size: 0.78rem;
+}
+.import-file-remove:hover { background: hsl(0, 65%, 86%); }
+.import-file-count { font-size: 0.82rem; color: var(--admin-ink-soft, #666); margin-left: 4px; }
+
+.import-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 12px;
+}
+.import-status { font-size: 0.85rem; color: var(--admin-ink-soft, #666); }
+.import-status.is-error { color: hsl(0, 60%, 45%); }
+.import-hint { margin: 10px 0 0; font-size: 0.8rem; color: hsl(30, 80%, 40%); }
+.import-hint-muted { color: var(--admin-ink-soft, #777); margin: 6px 0 14px; }
+.import-label-soft { font-weight: 400; color: var(--admin-ink-soft, #888); font-size: 0.85rem; }
+.import-file-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* 生成结果区:创建栏(归卷 + 一键批改 + Create all) */
+.import-createbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px 16px;
+    padding: 12px;
+    margin-bottom: 10px;
+    background: var(--admin-card, #fff);
+    border: 1px solid hsl(212, 30%, 88%);
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.import-createbar-assign,
+.import-createbar-bulk { display: flex; align-items: flex-end; gap: 10px; }
+.import-createbar-assign label,
+.import-createbar-bulk label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.78rem;
+    color: var(--admin-ink-soft, #666);
+}
+.import-createbar select,
+.import-createbar input { padding: 6px 8px; }
+.import-createbar-assign #import-bar-test { min-width: 110px; }
+.import-createbar-assign #import-bar-year { width: 100px; }
+.import-createbar-bulk {
+    padding-left: 16px;
+    border-left: 1px solid hsl(212, 20%, 88%);
+}
+.import-bulk-topic { display: inline-flex; gap: 6px; }
+.import-createbar-bulk #import-setall-topic { width: 130px; }
+.import-createbar-bulk #import-setall-points { width: 56px; }
+.import-createbar-bulk #import-setall-topic-btn {
+    padding: 6px 12px;
+    background: hsl(0, 0%, 92%);
+    color: var(--admin-text);
+}
+.import-createbar-bulk #import-setall-topic-btn:hover { background: hsl(0, 0%, 85%); }
+.import-createbar #import-create-all { margin-left: auto; }
+/* 全部创建完后,同一个按钮变成"一键清空"——红色以示区分 */
+.import-createbar #import-create-all.import-clear-mode { background: hsl(0, 62%, 48%); }
+.import-createbar #import-create-all.import-clear-mode:hover { background: hsl(0, 62%, 42%); }
+
+.import-q-card { margin-bottom: 14px; }
+.import-q-card.import-q-done { outline: 2px solid hsl(145, 50%, 60%); }
+
+.import-q-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.import-q-badge {
+    font-weight: 700;
+    color: var(--admin-ink-soft, #666);
+}
+.import-q-head .imp-num { width: 60px; }
+.import-q-head .imp-sub { width: 52px; }
+.import-q-head .imp-type { width: 150px; }
+.import-q-head .imp-topic { flex: 1; min-width: 120px; }
+.import-q-head .imp-points { width: 58px; }
+.import-q-head input,
+.import-q-head select { padding: 6px 8px; }
+
+/* 小 ✕ 删除按钮:覆盖全局 button 的大内边距 */
+.import-remove {
+    margin-left: auto;
+    padding: 4px 10px;
+    background: hsl(0, 65%, 95%);
+    color: hsl(0, 55%, 45%);
+    font-size: 0.9rem;
+}
+.import-remove:hover { background: hsl(0, 70%, 90%); }
+
+/* 题干/答案用等宽字体,代码看着对 */
+.imp-desc, .imp-sol {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;   /* 行距松一点,好读;又不到空一整行 */
+}
+
 #cancel-edit-btn {
     background-color: hsl(0, 0%, 92%);
     color: var(--admin-text);
@@ -166,6 +322,18 @@ button {
     font-size: 0.9rem;
     margin-bottom: 10px;
 }
+/* 每个年份文件夹的"删本年份全部"按钮:小号红字,浮在 summary 右侧 */
+.folder-delete-btn {
+    float: right;
+    padding: 3px 10px;
+    background: hsl(0, 62%, 96%);
+    color: hsl(0, 60%, 42%);
+    border: 1px solid hsl(0, 55%, 88%);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+.folder-delete-btn:hover { background: hsl(0, 65%, 92%); }
+.folder-delete-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .table-wrap {
     overflow-x: auto;

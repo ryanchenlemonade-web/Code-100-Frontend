@@ -269,8 +269,8 @@ body.exam-marking-mode .self-assess-box {
 
 .exam-marking-hold-text strong {
     display: block;
-    margin-bottom: 2px;
-    font-size: 0.98rem;
+    margin-bottom: 4px;
+    font-size: 1.22rem;   /* 改卷标题调大 */
     color: hsl(220, 30%, 20%);
 }
 
@@ -295,6 +295,32 @@ body.exam-marking-mode .self-assess-box {
 .exam-marking-hold-btn:disabled {
     background: hsl(212, 20%, 72%);
     cursor: not-allowed;
+}
+
+/* Submit 和 Quit 放一排 */
+.exam-marking-hold-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+/* "Quit exam"：次要按钮（幽灵样式），hover 变红——快速退出这场考试 */
+.exam-marking-hold-quit {
+    padding: 10px 16px;
+    border: 1px solid hsl(212, 25%, 80%);
+    border-radius: 10px;
+    background: transparent;
+    color: hsl(220, 20%, 42%);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.exam-marking-hold-quit:hover {
+    background: hsl(0, 60%, 96%);
+    border-color: hsl(0, 50%, 78%);
+    color: hsl(0, 55%, 42%);
 }
 
 /* 改卷阶段藏起卷面头卡（Correction 那张）——等学生 Submit 后，
@@ -539,6 +565,20 @@ body.exam-marking-mode #testing-header {
     border-color: hsl(145, 40%, 78%);
     color: hsl(145, 44%, 28%);
     --nav-strong: hsl(145, 46%, 42%);
+}
+
+/* 改卷阶段：还需要自评打分的大题 —— 紫色 + 轻微脉冲，提醒学生去这几个大题打分。
+   写在得分色之后，改卷期间它是唯一的状态色（考试期的已答/标记会被清掉）。 */
+.exam-nav-item.is-needs-mark {
+    background: hsl(265, 70%, 94%);
+    border-color: hsl(265, 55%, 80%);
+    color: hsl(265, 45%, 40%);
+    --nav-strong: hsl(265, 55%, 58%);
+    animation: navNeedsMarkPulse 1.6s ease-in-out infinite;
+}
+@keyframes navNeedsMarkPulse {
+    0%, 100% { box-shadow: 0 0 0 0 hsla(265, 60%, 60%, 0); }
+    50%      { box-shadow: 0 0 0 3px hsla(265, 60%, 60%, 0.30); }
 }
 
 /* 当前滚到的那道题：填成本按钮的色调（--nav-strong），不再一律深灰。
@@ -1122,6 +1162,73 @@ body.exam-marking-mode .answer-editor-input {
     padding-bottom: 32px;
     border-bottom: 1px solid var(--divider-color);
     scroll-margin-top: 100px; /* "Go to Question" 跳过来时，题号不会被吸顶的 nav-bar 挡住 */
+}
+
+/* ===== 考试：按大题分组（做成像真考试：大题号 + 大题总说明，下面挂 a/b/c 小题） ===== */
+.exam-main-question {
+    scroll-margin-top: 100px;   /* 导航跳过来不被吸顶栏挡住 */
+}
+.exam-main-question + .exam-main-question {
+    border-top: 2px solid var(--divider-color);   /* 大题之间更明显的分隔 */
+    padding-top: 48px;   /* 大题说明离上面那条分隔线远一点 */
+    margin-top: 14px;
+}
+.exam-main-head {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    margin-bottom: 40px;   /* 小题离大题说明(description)远一点，别挤在一起 */
+}
+.exam-main-number {
+    font-weight: 800;
+    font-size: 1.2rem;
+    flex: 0 0 auto;
+}
+.exam-main-intro-text {
+    white-space: pre-wrap;   /* 保留大题说明里的换行 */
+    line-height: 1.6;
+}
+
+/* 考试的【阅读文本】用衬线体（Georgia，屏幕上比 Times 更清晰），像真考卷；
+   代码块（.question-code / 标准答案）仍是等宽，不受影响。只作用于考试内的散文文本。 */
+.exam-main-intro-text,
+.exam-marking-hold-text,
+.exam-marking-hold-text strong,
+.self-assess-rubric,
+.self-assess-missing,
+.question-code.question-prose {
+    font-family: Georgia, "Times New Roman", serif;
+}
+.exam-main-intro-text {
+    font-size: 1.14rem;   /* 大题说明标题调大一点 */
+}
+
+/* 整段文字的题干（不是代码）：衬线体、去掉代码框的等宽/底色，读着像卷面说明 */
+.question-code.question-prose {
+    background: transparent;
+    color: inherit;
+    font-size: 1.06rem;
+    line-height: 1.6;
+    padding: 2px 0 4px;
+}
+
+/* 拆分渲染时开头的【介绍散文】：衬线体读着像卷面说明；下面的代码/示例仍是等宽 .question-code 框 */
+.question-intro-prose {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.06rem;
+    line-height: 1.6;
+    white-space: pre-wrap;   /* 保留介绍里的换行 */
+    margin: 8px 0 12px;
+}
+/* 大题下的小题：分隔弱一点（是同一大题的小题），最后一个不再画线，交给大题之间的 border-top 分 */
+.exam-main-question .question-block {
+    margin-bottom: 30px;
+    padding-bottom: 22px;
+}
+.exam-main-question .question-block:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 6px;
 }
 
 /* 请求还没回来时显示的"加载中"提示，带一个简单的旋转小图标，避免用户以为卡住了 */

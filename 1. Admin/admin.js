@@ -73,14 +73,19 @@ adminKeyInput.addEventListener('keydown', (e) => {
 })();
 
 // ---------- 侧边栏切换 ----------
+// 切到某个 section(顶部导航高亮 + 只显示对应面板)。抽出来复用:
+// 侧栏点击用它,列表里点 Edit 也用它跳到 "Add Question" 表单页。
+function showAdminSection(name) {
+    document.querySelectorAll('.admin-nav-item').forEach(b =>
+        b.classList.toggle('active', b.dataset.section === name));
+    document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+    const sec = document.getElementById(`section-${name}`);
+    if (sec) sec.classList.add('active');
+}
+
 function initSidebarNav() {
     document.querySelectorAll('.admin-nav-item').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.admin-nav-item').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById(`section-${btn.dataset.section}`).classList.add('active');
-        });
+        btn.addEventListener('click', () => showAdminSection(btn.dataset.section));
     });
 }
 
@@ -178,110 +183,394 @@ function initAdminApp() {
 
     initSidebarNav();
     initQuestionBank();
+    initExamImport();
     initCribsheetLibrary();
-    initNoteSizes();
     initUserManagement();
 }
 
-
 // ============================================================
-// Note Sizes
+// Import Exam (AI 批量导入)
 // ============================================================
-function initNoteSizes() {
+// 粘贴整张卷 -> POST /api/admin/parse-exam(AI 解析)-> 渲染成可编辑卡 -> 复核 ->
+// "Create all" 逐条走现有 POST /api/questions 创建。创建部分复用现有建题接口,不新增。
+function initExamImport() {
+    const parseBtn = document.getElementById('import-parse-btn');
+    if (!parseBtn || parseBtn.dataset.wired) return;
+    parseBtn.dataset.wired = '1';
 
-    let allSizes = [];
+    const statusEl = document.getElementById('import-status');
+    const resultsEl = document.getElementById('import-results');
 
-    const form = document.getElementById('note-size-form');
-    const nameInput = document.getElementById('note-size-name-input');
-    const colsInput = document.getElementById('note-size-cols-input');
-    const rowsInput = document.getElementById('note-size-rows-input');
-    const tableBody = document.getElementById('note-sizes-table-body');
+    const setStatus = (msg, isErr = false) => {
+        statusEl.textContent = msg || '';
+        statusEl.classList.toggle('is-error', !!isErr);
+    };
 
-    function escapeHTML(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+    // ---------- 文件上传 ----------
+    // 只收图片:【不 OCR】,转 base64 让后端的视觉模型直接看图(比 OCR 准得多)。
+    // 图片累积在 importImages 里(每项 {name, b64}),复核卡片由 Parse 结果生成。
+    const fileInput = document.getElementById('import-file');
+    const fileListEl = document.getElementById('import-file-list');
+    let importImages = [];   // [{name, b64}] —— b64 不含 data: 前缀
+
+    // 已选文件渲染成一排可删的小卡片:能单独删、能继续加。
+    // 已解析过的图打勾+变淡(Parse 时会跳过它们),只解析新加入的。
+    function renderFileList() {
+        fileListEl.innerHTML = '';
+        if (!importImages.length) return;
+        importImages.forEach((img, i) => {
+            const chip = document.createElement('span');
+            chip.className = 'import-file-chip' + (img.parsed ? ' is-parsed' : '');
+            chip.innerHTML = `<i class="fa-regular ${img.parsed ? 'fa-circle-check' : 'fa-image'}"></i><span class="import-file-name"></span>
+                              <button type="button" class="import-file-remove" title="Remove">✕</button>`;
+            chip.querySelector('.import-file-name').textContent = img.name || `image ${i + 1}`;
+            if (img.parsed) chip.title = 'Already parsed';
+            chip.querySelector('.import-file-remove').addEventListener('click', () => {
+                importImages.splice(i, 1);
+                renderFileList();
+            });
+            fileListEl.appendChild(chip);
+        });
+        const pending = importImages.filter(x => !x.parsed).length;
+        const count = document.createElement('span');
+        count.className = 'import-file-count';
+        count.textContent = pending
+            ? `${pending} new image${pending === 1 ? '' : 's'} to parse — click Parse.`
+            : 'All images parsed.';
+        fileListEl.appendChild(count);
     }
 
-    async function loadSizes() {
-        try {
-            const response = await adminFetch(`${API_BASE}/admin/note-sizes`);
-            allSizes = await response.json();
-            renderSizesTable();
-        } catch (error) {
-            console.error('Failed to load note sizes:', error);
-            showToast('Failed to load note sizes.', true);
-        }
-    }
-
-    function renderSizesTable() {
-        if (allSizes.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="5" class="empty-state">No sizes yet.</td></tr>`;
-            return;
-        }
-
-        tableBody.innerHTML = allSizes.map(s => `
-            <tr>
-                <td>${s.id}</td>
-                <td>${escapeHTML(s.name || '')}</td>
-                <td>${s.cols}</td>
-                <td>${s.rows}</td>
-                <td>
-                    <div class="row-actions">
-                        <button class="delete-btn" data-id="${s.id}">Delete</button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
-
-        tableBody.querySelectorAll('.delete-btn').forEach(btn => {
-            btn.addEventListener('click', () => deleteSize(Number(btn.dataset.id)));
+    function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => {
+                const s = String(r.result || '');
+                const comma = s.indexOf(',');       // 去掉 "data:image/...;base64," 前缀
+                resolve(comma >= 0 ? s.slice(comma + 1) : s);
+            };
+            r.onerror = reject;
+            r.readAsDataURL(file);
         });
     }
 
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    if (fileInput && !fileInput.dataset.wired) {
+        fileInput.dataset.wired = '1';
+        fileInput.addEventListener('change', async () => {
+            const files = [...fileInput.files];
+            if (!files.length) return;
+            fileInput.disabled = true;
+            try {
+                for (const f of files) {
+                    if (f.type.startsWith('image/')) {
+                        importImages.push({ name: f.name, b64: await fileToBase64(f), parsed: false });
+                    }
+                }
+                renderFileList();
+            } catch (err) {
+                console.error('File read failed:', err);
+                setStatus('Could not read that file.', true);
+            } finally {
+                fileInput.disabled = false;
+                fileInput.value = '';   // 允许再次选同一个文件
+            }
+        });
+    }
 
-        const name = nameInput.value.trim();
-        const cols = Number(colsInput.value);
-        const rows = Number(rowsInput.value);
+    parseBtn.addEventListener('click', async () => {
+        if (!importImages.length) { setStatus('Upload exam image(s) first.', true); return; }
+        // 只解析【还没解析过】的新图;已解析的卡片和你的改动都原样保留,新卡片追加在后面。
+        const pending = importImages.filter(x => !x.parsed);
+        if (!pending.length) { setStatus('No new images to parse — add more first.', true); return; }
 
-        if (!name || !cols || !rows || cols < 1 || cols > 12) {
-            showToast('Name is required, Columns must be 1-12, Rows must be a positive number.', true);
-            return;
-        }
-
+        parseBtn.disabled = true;
+        setStatus(`AI reading ${pending.length} new image${pending.length === 1 ? '' : 's'}… this can take a while.`);
         try {
-            await adminFetch(`${API_BASE}/admin/note-sizes`, {
+            const res = await adminFetch(`${API_BASE}/admin/parse-exam`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, cols, rows })
+                body: JSON.stringify({ images: pending.map(x => x.b64) })
             });
-            showToast(`Size "${name}" added.`);
-            form.reset();
-            await loadSizes();
-        } catch (error) {
-            console.error('Failed to add size:', error);
-            showToast('Failed to add size.', true);
+            const data = await res.json();
+            const questions = (data && Array.isArray(data.questions)) ? data.questions : [];
+            if (!res.ok || !questions.length) {
+                setStatus((data && data.error) || 'No questions parsed. Try fewer pages at once.', true);
+                return;
+            }
+            pending.forEach(x => { x.parsed = true; });   // 标记这些图已解析
+            renderFileList();
+            appendImportRows(questions);                   // 追加,不清空已有卡片
+            const total = resultsEl.querySelectorAll('.import-q-card').length;
+            setStatus(`Added ${questions.length} — ${total} question${total === 1 ? '' : 's'} ready to review.`);
+            showToast(`✨ AI parsed ${questions.length} question${questions.length === 1 ? '' : 's'} — review below, then create.`);
+        } catch (err) {
+            console.error('Parse exam failed:', err);
+            setStatus('Parse failed — is the backend running?', true);
+            showToast('Parse failed — is the backend running?', true);
+        } finally {
+            parseBtn.disabled = false;
         }
     });
 
-    async function deleteSize(id) {
-        const size = allSizes.find(s => s.id === id);
-        const confirmed = confirm(`Delete size "${size ? size.name : id}"?\n\nNote: any notes already placed on a student's Cribsheet using this size will show incorrectly next time they load their canvas.`);
-        if (!confirmed) return;
+    const TYPES = ['one-liners', 'debugging', 'get-output', 'half-program', 'full-program', 'mcq'];
 
-        try {
-            await adminFetch(`${API_BASE}/admin/note-sizes/${id}`, { method: 'DELETE' });
-            showToast(`Size #${id} deleted.`);
-            await loadSizes();
-        } catch (error) {
-            console.error('Failed to delete size:', error);
-            showToast('Failed to delete size.', true);
+    // ---------- 导入文本格式清理(确定性,不靠 AI) ----------
+    // 把每行末尾的 #1 #2 #3… 行号标记补空格【竖向对齐成一列】。只在至少两行带标记时才对齐,
+    // 且要求标记前有空白(避免误伤 x=5#1 这种);普通 Python 注释 "# text" 不是 #数字,不受影响。
+    function alignLineTags(text) {
+        const lines = String(text).replace(/\r\n/g, '\n').split('\n').map(l => l.replace(/[ \t]+$/, ''));
+        const re = /^(.*?)[ \t]+(#\d+)$/;
+        const parsed = lines.map(l => {
+            const m = l.match(re);
+            return m ? { code: m[1].replace(/[ \t]+$/, ''), tag: m[2] } : null;
+        });
+        if (parsed.filter(Boolean).length < 2) return lines.join('\n');
+        const maxCode = Math.max(...parsed.filter(Boolean).map(p => p.code.length));
+        // 像原试卷那样:#号统一顶到一个【靠右的固定列】(至少第 44 列),代码短也照样把 # 甩到右边;
+        // 只有当某行代码比这还长时,才以"最长行 + 2"为准,免得撞上。
+        const tagCol = Math.max(maxCode + 2, 44);
+        return lines.map((l, i) => parsed[i] ? parsed[i].code.padEnd(tagCol, ' ') + parsed[i].tag : l).join('\n');
+    }
+
+    // 把 AI 输出的 Markdown 竖线表格【确定性对齐】成整齐的 ASCII 表格(列宽取每列最长,补空格 + 表头下划线)。
+    // 靠"表头行 + 紧跟一条 --- 分隔行"来精确识别,避免把 Python 里的 `a | b`(位或/集合并)误判成表格。
+    function alignTables(text) {
+        const lines = String(text).split('\n');
+        const sepRe = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/;   // | --- | --- | ...
+        const splitRow = (line) => {
+            let s = line.trim();
+            if (s.startsWith('|')) s = s.slice(1);
+            if (s.endsWith('|')) s = s.slice(0, -1);
+            return s.split('|').map(c => c.trim());
+        };
+        const out = [];
+        for (let i = 0; i < lines.length; i++) {
+            if (i + 1 < lines.length && lines[i].includes('|') && sepRe.test(lines[i + 1])) {
+                const rows = [splitRow(lines[i])];
+                let j = i + 2;
+                while (j < lines.length && lines[j].includes('|') && !sepRe.test(lines[j])) {
+                    rows.push(splitRow(lines[j])); j++;
+                }
+                const cols = Math.max(...rows.map(r => r.length));
+                rows.forEach(r => { while (r.length < cols) r.push(''); });
+                const w = [];
+                for (let c = 0; c < cols; c++) w[c] = Math.max(...rows.map(r => r[c].length));
+                const fmt = r => r.map((c, k) => c.padEnd(w[k])).join(' | ');
+                out.push(fmt(rows[0]));
+                out.push(w.map(width => '-'.repeat(width)).join('-+-'));   // 表头下划线,+ 对齐竖线
+                for (let k = 1; k < rows.length; k++) out.push(fmt(rows[k]));
+                i = j - 1;
+            } else {
+                out.push(lines[i]);
+            }
+        }
+        return out.join('\n');
+    }
+
+    // 整体清理:统一换行、剥掉 AI 偶尔套的 ```代码块围栏、去掉外层多余空行、对齐表格、再对齐行号。
+    function cleanupImportedText(text) {
+        if (text == null) return '';
+        let t = String(text).replace(/\r\n/g, '\n');
+        const fenced = t.match(/^\s*```[^\n]*\n([\s\S]*?)\n```\s*$/);
+        if (fenced) t = fenced[1];
+        t = t.replace(/^\n+/, '').replace(/\n+$/, '');
+        // 兜底:去掉开头残留的"题号 + 分值注记"——分值已单独入库,题干不重复。
+        // 例:"4. (15 points) Write…" / "(20 points total; 4 each) …" -> 直接从正题开始。
+        t = t.replace(/^\s*(?:\d+\.\s*)?\(\s*\d+\s*points?\b[^)]*\)\s*/i, '');
+        t = alignTables(t);
+        return alignLineTags(t);
+    }
+
+    // 顶部创建栏【只建一次】(归卷 Test/Year + 一键批改题型/知识点 + Create all)。
+    // 增量解析时保留它,这样 Test/Year 选择和一键设置都不会被后续 Parse 冲掉。
+    function ensureCreatebar() {
+        let bar = document.getElementById('import-createbar');
+        if (bar) return bar;
+        bar = document.createElement('div');
+        bar.className = 'import-createbar';
+        bar.id = 'import-createbar';
+        const setAllTypeOpts = ['<option value="">Set all types…</option>']
+            .concat(TYPES.map(t => `<option value="${t}">${t}</option>`)).join('');
+        bar.innerHTML = `
+            <div class="import-createbar-assign">
+                <label>Test
+                    <select id="import-bar-test">
+                        <option value="Test 1">Test 1</option>
+                        <option value="Test 2">Test 2</option>
+                        <option value="Test 3">Test 3</option>
+                        <option value="Final Test">Final Test</option>
+                    </select>
+                </label>
+                <label>Year
+                    <input type="number" id="import-bar-year" placeholder="e.g. 2024" min="1990" max="2100">
+                </label>
+            </div>
+            <div class="import-createbar-bulk">
+                <select id="import-setall-type" title="Set every question's type at once">${setAllTypeOpts}</select>
+                <span class="import-bulk-topic">
+                    <input type="text" id="import-setall-topic" placeholder="Set all topics…">
+                    <input type="number" id="import-setall-points" placeholder="pts" min="0" step="1" title="Set every question's points at once">
+                    <button type="button" id="import-setall-topic-btn">Apply</button>
+                </span>
+            </div>
+            <button type="button" class="admin-primary-btn" id="import-create-all">Create all</button>
+            <span class="import-status" id="import-create-status"></span>`;
+        resultsEl.appendChild(bar);
+
+        // 一键设所有题型:选中即刷新每张卡的题型下拉(含后来追加的卡)
+        bar.querySelector('#import-setall-type').addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (!val) return;
+            resultsEl.querySelectorAll('.import-q-card .imp-type').forEach(sel => { sel.value = val; });
+        });
+        // 一键设所有知识点/分值:点 Apply(或回车)。只应用【填了的】那个,留空的不动。
+        const applyBulk = () => {
+            const topicVal = bar.querySelector('#import-setall-topic').value.trim();
+            const ptsVal = bar.querySelector('#import-setall-points').value.trim();
+            if (topicVal !== '') resultsEl.querySelectorAll('.import-q-card .imp-topic').forEach(inp => { inp.value = topicVal; });
+            if (ptsVal !== '') resultsEl.querySelectorAll('.import-q-card .imp-points').forEach(inp => { inp.value = ptsVal; });
+        };
+        bar.querySelector('#import-setall-topic-btn').addEventListener('click', applyBulk);
+        const bulkEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); applyBulk(); } };
+        bar.querySelector('#import-setall-topic').addEventListener('keydown', bulkEnter);
+        bar.querySelector('#import-setall-points').addEventListener('keydown', bulkEnter);
+        // 同一个按钮两种角色:还有没建的 -> Create;全建完了 -> Clear all(一键清空重来)
+        bar.querySelector('#import-create-all').addEventListener('click', () => {
+            const btn = document.getElementById('import-create-all');
+            if (btn.dataset.mode === 'clear') clearAllImport();
+            else createAll();
+        });
+        return bar;
+    }
+
+    // Create 按钮:还有没建的 -> "Create all N"(蓝);全建完了 -> "Clear all"(红,一键清空)。
+    function updateCreateCount() {
+        const btn = document.getElementById('import-create-all');
+        if (!btn) return;
+        const total = resultsEl.querySelectorAll('.import-q-card').length;
+        if (total === 0) { resultsEl.innerHTML = ''; return; }   // 卡片删光了,顺手把创建栏也收掉
+        const pending = resultsEl.querySelectorAll('.import-q-card:not(.import-q-done)').length;
+        if (pending > 0) {
+            btn.textContent = `Create all ${pending}`;
+            btn.dataset.mode = 'create';
+            btn.classList.remove('import-clear-mode');
+        } else {
+            btn.textContent = '🗑 Clear all';
+            btn.dataset.mode = 'clear';
+            btn.classList.add('import-clear-mode');
         }
     }
 
-    loadSizes();
+    // 一键清空:复核卡片 + 已解析的图全清掉,回到干净状态,方便直接录下一套卷。
+    function clearAllImport() {
+        resultsEl.innerHTML = '';
+        importImages = [];
+        renderFileList();
+        if (fileInput) fileInput.value = '';
+        setStatus('');
+        showToast('Cleared — ready for the next exam.');
+    }
+
+    // 追加渲染新解析出的卡片(不清空已有卡片,也不动创建栏)
+    function appendImportRows(questions) {
+        ensureCreatebar();
+        questions.forEach((q) => {
+            const card = document.createElement('section');
+            card.className = 'card import-q-card';
+            const typeOpts = TYPES.map(t =>
+                `<option value="${t}"${(q.questionCategory || '') === t ? ' selected' : ''}>${t}</option>`).join('');
+            card.innerHTML = `
+                <div class="import-q-head">
+                    <span class="import-q-badge">Q</span>
+                    <input type="number" class="imp-num" value="${escapeHTMLAttr(q.questionNumber ?? '')}" placeholder="#" title="Question number">
+                    <input type="text" class="imp-sub" value="${escapeHTMLAttr(q.subquestionNumber ?? '')}" placeholder="a" maxlength="3" title="Subquestion (a/b/c)">
+                    <select class="imp-type">${typeOpts}</select>
+                    <input type="text" class="imp-topic" value="${escapeHTMLAttr(q.topic ?? '')}" placeholder="Topic (optional)">
+                    <input type="number" class="imp-points" value="${escapeHTMLAttr(q.points ?? '')}" placeholder="pts" min="0" step="1" title="Points">
+                    <button type="button" class="import-remove" title="Remove this one">✕</button>
+                </div>
+                <label>Main intro <span class="import-label-soft">(shared lead-in for this question's parts — optional)</span></label>
+                <textarea class="imp-intro" rows="2">${escapeHTMLAttr(cleanupImportedText(q.mainIntro))}</textarea>
+                <label>Question</label>
+                <textarea class="imp-desc" rows="5">${escapeHTMLAttr(cleanupImportedText(q.questionDescription))}</textarea>
+                <label>Solution</label>
+                <textarea class="imp-sol" rows="3">${escapeHTMLAttr(cleanupImportedText(q.questionSolution))}</textarea>
+            `;
+            card.querySelector('.import-remove').addEventListener('click', () => { card.remove(); updateCreateCount(); });
+            resultsEl.appendChild(card);
+        });
+        updateCreateCount();
+    }
+
+    async function createAll() {
+        const createBtn = document.getElementById('import-create-all');
+        const createStatus = document.getElementById('import-create-status');
+        const category = document.getElementById('import-bar-test').value;
+        const year = Number(document.getElementById('import-bar-year').value);
+        if (!year || year < 1990) { createStatus.textContent = 'Set a valid Year first.'; createStatus.classList.add('is-error'); return; }
+
+        // 只创建【还没创建过】的卡片,避免增量导入时重复建之前那批
+        const cards = [...resultsEl.querySelectorAll('.import-q-card:not(.import-q-done)')];
+        if (!cards.length) { createStatus.textContent = 'Nothing new to create.'; return; }
+
+        createBtn.disabled = true;
+        createStatus.classList.remove('is-error');
+        const course = getAdminCourse();
+
+        let paperId;
+        try {
+            paperId = await importGetOrCreatePaperId(category, year, course);
+        } catch (e) {
+            console.error(e);
+            createStatus.textContent = 'Failed to create/find the paper.';
+            createStatus.classList.add('is-error');
+            createBtn.disabled = false;
+            return;
+        }
+
+        let ok = 0, fail = 0;
+        for (const card of cards) {
+            const payload = {
+                paperId,
+                question_number: Number(card.querySelector('.imp-num').value) || null,
+                subquestion_number: card.querySelector('.imp-sub').value.trim(),
+                question_category: card.querySelector('.imp-type').value,
+                topic: card.querySelector('.imp-topic').value.trim(),
+                points: card.querySelector('.imp-points').value.trim() === '' ? null : Number(card.querySelector('.imp-points').value),
+                main_intro: card.querySelector('.imp-intro').value.trim() || null,
+                question_description: card.querySelector('.imp-desc').value,
+                question_solution: card.querySelector('.imp-sol').value,
+                course
+            };
+            createStatus.textContent = `Creating… ${ok + fail + 1}/${cards.length}`;
+            try {
+                const r = await adminFetch(`${API_BASE}/questions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (r.ok) { ok++; card.classList.add('import-q-done'); } else { fail++; }
+            } catch (e) { fail++; }
+        }
+
+        createStatus.textContent = `Done — created ${ok}${fail ? `, ${fail} failed` : ''}.`;
+        createBtn.disabled = false;
+        updateCreateCount();   // 已建的卡片标了 import-q-done,按钮数字同步(可继续解析新图再建)
+        showToast(`Imported ${ok} question${ok === 1 ? '' : 's'}${fail ? ` (${fail} failed)` : ''}.`, fail > 0);
+    }
+
+    // 找/建这门课这个 Test+Year 的试卷,返回 paperId(跟 Question Bank 那边同一套逻辑)
+    async function importGetOrCreatePaperId(category, year, course) {
+        const res = await adminFetch(`${API_BASE}/papers?course=${encodeURIComponent(course)}`);
+        const papers = await res.json();
+        const existing = (papers || []).find(p => p.paper_category === category && p.paper_year === year);
+        if (existing) return existing.id;
+        const created = await adminFetch(`${API_BASE}/papers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paper_category: category, paper_year: year, course })
+        }).then(r => r.json());
+        return created.id;
+    }
 }
 
 
@@ -303,6 +592,7 @@ function initQuestionBank() {
     const subquestionNumberInput = document.getElementById('subquestion-number-input');
     const questionCategorySelect = document.getElementById('question-category-select');
     const questionTopicInput = document.getElementById('question-topic-input');
+    const questionMainIntroInput = document.getElementById('question-main-intro-input');
     const questionDescriptionInput = document.getElementById('question-description-input');
     const questionSolutionInput = document.getElementById('question-solution-input');
     const questionPointsInput = document.getElementById('question-points-input');
@@ -315,6 +605,19 @@ function initQuestionBank() {
     const filterSearchInput = document.getElementById('filter-search-input');
     const questionsCountEl = document.getElementById('questions-count');
     const questionsFoldersEl = document.getElementById('questions-folders');
+
+    // 当前筛选(Paper/Type/搜索)下的题目——列表渲染和"删本年份"共用同一套过滤
+    function currentFiltered() {
+        const paperFilter = filterPaperSelect.value;
+        const categoryFilter = filterCategorySelect.value;
+        const searchText = filterSearchInput.value.trim().toLowerCase();
+        return allQuestions.filter(q => {
+            if (paperFilter && String(q.paperId) !== paperFilter) return false;
+            if (categoryFilter && q.question_category !== categoryFilter) return false;
+            if (searchText && !q.question_description?.toLowerCase().includes(searchText)) return false;
+            return true;
+        });
+    }
 
     function formatPaperLabel(paper) {
         return `${paper.paper_category} (${paper.paper_year})`;
@@ -398,16 +701,11 @@ function initQuestionBank() {
 
     // 现在 admin-list 接口已经把 testCategory / year 直接带回来了，不用再自己去 allPapers 里查一遍
     function renderQuestionsTable() {
-        const paperFilter = filterPaperSelect.value;
-        const categoryFilter = filterCategorySelect.value;
-        const searchText = filterSearchInput.value.trim().toLowerCase();
+        const filtered = currentFiltered();
 
-        const filtered = allQuestions.filter(q => {
-            if (paperFilter && String(q.paperId) !== paperFilter) return false;
-            if (categoryFilter && q.question_category !== categoryFilter) return false;
-            if (searchText && !q.question_description?.toLowerCase().includes(searchText)) return false;
-            return true;
-        });
+        // 重渲染前记下哪些文件夹是展开的,渲染后按 data-key 还原——
+        // 这样删一道题(会重渲染)后,展开的 Test/年份不会被收起,页面"不跳走"。
+        const prevOpen = new Set([...questionsFoldersEl.querySelectorAll('details[open]')].map(d => d.dataset.key));
 
         questionsCountEl.textContent = `Showing ${filtered.length} of ${allQuestions.length} questions`;
 
@@ -464,9 +762,10 @@ function initQuestionBank() {
             const yearFoldersHTML = sortedYears.map(year => {
                 const items = yearsMap[year].slice().sort((a, b) => (a.question_number ?? 0) - (b.question_number ?? 0));
                 const yearLabel = year === '' ? 'No year' : year;
+                const yKey = 'y:' + category + '|' + year;
                 return `
-                    <details class="paper-folder paper-folder-year">
-                        <summary>${escapeHTML(String(yearLabel))} <span class="folder-count">(${items.length})</span></summary>
+                    <details class="paper-folder paper-folder-year" data-key="${escapeHTMLAttr(yKey)}"${prevOpen.has(yKey) ? ' open' : ''}>
+                        <summary>${escapeHTML(String(yearLabel))} <span class="folder-count">(${items.length})</span><button type="button" class="folder-delete-btn" data-cat="${escapeHTMLAttr(category)}" data-year="${escapeHTMLAttr(String(year))}" title="Delete every question in this year">🗑 Delete all</button></summary>
                         <table>
                             <thead>
                                 <tr>
@@ -485,9 +784,10 @@ function initQuestionBank() {
                 `;
             }).join('');
 
-            // 初始化时全部收起——外层 Test、内层年份都默认关，页面一进来最紧凑
+            // 首次渲染全部收起(prevOpen 为空);之后重渲染会保留用户展开的状态
+            const cKey = 'c:' + category;
             return `
-                <details class="paper-folder paper-folder-test">
+                <details class="paper-folder paper-folder-test" data-key="${escapeHTMLAttr(cKey)}"${prevOpen.has(cKey) ? ' open' : ''}>
                     <summary>${escapeHTML(category)} <span class="folder-count">(${totalInCategory})</span></summary>
                     <div class="paper-folder-years">${yearFoldersHTML}</div>
                 </details>
@@ -499,6 +799,14 @@ function initQuestionBank() {
         });
         questionsFoldersEl.querySelectorAll('.delete-btn').forEach(btn => {
             btn.addEventListener('click', () => deleteQuestion(Number(btn.dataset.id)));
+        });
+        // 每个年份文件夹的"删本年份全部"。按钮在 <summary> 里,阻止默认展开/收起。
+        questionsFoldersEl.querySelectorAll('.folder-delete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                deleteYear(btn.dataset.cat, btn.dataset.year, btn);
+            });
         });
     }
 
@@ -521,6 +829,7 @@ function initQuestionBank() {
         subquestionNumberInput.value = question.subquestion_number ?? '';
         questionCategorySelect.value = question.question_category ?? '';
         questionTopicInput.value = question.topic ?? '';
+        questionMainIntroInput.value = question.main_intro ?? '';
         questionDescriptionInput.value = question.question_description ?? '';
         questionSolutionInput.value = question.question_solution ?? '';
         // points 为 null = 未设置，回填成空字符串（不是 0）；rubric 同理
@@ -532,6 +841,8 @@ function initQuestionBank() {
         cancelEditBtn.style.display = 'inline-block';
         formCard.classList.add('editing');
 
+        // 表单现在是独立的 "Add Question" 页——从 All Questions 点 Edit 时切过去,不然看不到表单
+        showAdminSection('questions');
         formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
@@ -546,51 +857,6 @@ function initQuestionBank() {
     }
 
     cancelEditBtn.addEventListener('click', exitEditMode);
-
-    // ---------- 图片扫描（OCR） ----------
-    const scanImageInput = document.getElementById('scan-image-input');
-    const scanImageBtn = document.getElementById('scan-image-btn');
-    const scanStatus = document.getElementById('scan-status');
-
-    scanImageBtn.addEventListener('click', async () => {
-        const file = scanImageInput.files[0];
-        if (!file) {
-            scanStatus.textContent = 'Please choose an image first.';
-            scanStatus.className = 'scan-status error';
-            return;
-        }
-
-        scanImageBtn.disabled = true;
-        scanStatus.className = 'scan-status';
-        scanStatus.textContent = 'Scanning... 0%';
-
-        try {
-            const result = await Tesseract.recognize(file, 'eng', {
-                logger: (info) => {
-                    if (info.status === 'recognizing text') {
-                        scanStatus.textContent = `Scanning... ${Math.round(info.progress * 100)}%`;
-                    }
-                }
-            });
-
-            const extractedText = result.data.text.trim();
-
-            if (!extractedText) {
-                scanStatus.textContent = 'No text detected. Try a clearer image.';
-                scanStatus.className = 'scan-status error';
-            } else {
-                questionDescriptionInput.value = extractedText;
-                scanStatus.textContent = 'Done! Please review the text below for accuracy — OCR is not perfect, especially with code formatting.';
-                scanStatus.className = 'scan-status success';
-            }
-        } catch (error) {
-            console.error('OCR failed:', error);
-            scanStatus.textContent = 'Scan failed. Please try again.';
-            scanStatus.className = 'scan-status error';
-        }
-
-        scanImageBtn.disabled = false;
-    });
 
     const requiredFields = [
         paperCategorySelect,
@@ -650,6 +916,7 @@ function initQuestionBank() {
             subquestion_number: subquestionNumberInput.value.trim(),
             question_category: questionCategorySelect.value,
             topic: questionTopicInput.value.trim(),
+            main_intro: questionMainIntroInput.value.trim() || null,
             question_description: questionDescriptionInput.value,
             question_solution: questionSolutionInput.value,
             points: pointsRaw === '' ? null : Number(pointsRaw),
@@ -701,6 +968,27 @@ function initQuestionBank() {
             console.error('Failed to delete question:', error);
             showToast('Failed to delete question.', true);
         }
+    }
+
+    // 删掉某一个 Test·年份文件夹里(当前筛选下)的全部题目。危险操作,强确认。
+    async function deleteYear(cat, yearStr, btn) {
+        const list = currentFiltered().filter(q =>
+            (q.testCategory || 'Unknown Paper') === cat && String(q.year ?? '') === yearStr);
+        if (!list.length) return;
+        const label = `${cat} · ${yearStr === '' ? 'No year' : yearStr}`;
+        if (!confirm(`Delete all ${list.length} question${list.length === 1 ? '' : 's'} in ${label}? This cannot be undone.`)) return;
+
+        if (btn) btn.disabled = true;
+        let ok = 0, fail = 0;
+        for (const q of list) {
+            try {
+                await adminFetch(`${API_BASE}/questions/${q.id}`, { method: 'DELETE' });
+                ok++;
+                if (questionIdInput.value === String(q.id)) exitEditMode();
+            } catch (e) { fail++; }
+        }
+        showToast(`Deleted ${ok} from ${label}${fail ? `, ${fail} failed` : ''}.`, fail > 0);
+        await loadQuestions();
     }
 
     filterPaperSelect.addEventListener('change', renderQuestionsTable);

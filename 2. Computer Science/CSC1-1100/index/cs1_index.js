@@ -129,15 +129,17 @@ function exitExamFocusMode(instant = false) {
 // 默认显示最新年份的版本；如果同一分类下有多个版本，额外加一个下拉框切换
 async function loadContent(id) {
     const category = navToCategory[id];
-    const papers = papersByCategory[category];
+    // 只保留【有题的】卷子(大题数 > 0)——0 题的空壳卷不显示,免得点进去是空考试误导人。
+    // mainQuestionCount 由后端 /api/papers/grouped 带回(distinct question_number)。
+    const papers = (papersByCategory[category] || []).filter(p => (p.mainQuestionCount ?? 0) > 0);
 
     // 切换内容前，先停掉 Testing 模式可能还在跑的计时器，避免内存泄漏
     stopTestingTimer();
     // 同时退出考试专注模式，避免切到别的 Test 时切换器/navbar 还是隐藏状态
     exitExamFocusMode();
 
-    if (!papers || papers.length === 0) {
-        console.warn(`No papers found for category: ${category}`);
+    if (papers.length === 0) {
+        console.warn(`No non-empty papers for category: ${category}`);
         // 该分类下暂无试卷，显示 Coming Soon 提示，不保留上一个分类的内容
         contentContainer.innerHTML = `
             <div style="padding: 80px 20px; text-align: center; color: var(--weak-color);">
@@ -195,7 +197,9 @@ async function loadContent(id) {
     // 所以可以在这个时间点安全调用
     // typeof 检查是保险：万一以后脚本加载顺序变了，
     // 不至于让整个 loadContent 抛错、页面一片空白
-    const resumeExam = typeof hasUnfinishedExam === 'function' && hasUnfinishedExam();
+    // 考试中、或交卷后改卷阶段——两种都要落在 Examination，别刷新回 Practice 把状态丢了
+    const resumeExam = (typeof hasUnfinishedExam === 'function' && hasUnfinishedExam())
+        || (typeof hasPendingMarking === 'function' && hasPendingMarking());
 
     const initialSection = document.getElementById(
         resumeExam ? 'testing-content' : 'practice-content'

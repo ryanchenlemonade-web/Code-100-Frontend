@@ -73,12 +73,12 @@ function formatQuestionType(rawCategory) {
     return rawCategory.replace(/_/g, '-').toLowerCase();
 }
 
-// 哪些题型自动判分。不在这个名单里的题交卷后走【学生自评】：
+// 哪些题型【自动判分】。只有这两类走标准答案自动比对（学生答案 vs 标准答案文本，
+// 标准答案里用 "or" 列的多个正确答案都算对）：
+//   - one-liners：一行代码，有明确正确写法
+//   - get-output：写出程序输出，有明确正确输出
+// 其余全部走【学生自评】（debugging / mcq / half-program / full-program）——
 // 摊开标准答案和减分条件，学生自己给自己打分。
-//
-// 收窄到这四类是有意的取舍。half-program / full-program 那种大题，
-// 光靠测试用例判不出"思路对但边界写错扣几分"，而录用例的成本又高，
-// 不如把判断交给学生自己——他手里有标准答案和减分条件。
 //
 // ⚠️ 必须用 formatQuestionType() 归一化之后再比。
 //    数据库里存的是 get_output（下划线），前端筛选器发的是 get-output（连字符），
@@ -86,13 +86,34 @@ function formatQuestionType(rawCategory) {
 //    而且是静默漏掉——那类题会被当成自评题，不报任何错
 const AUTO_GRADED_CATEGORIES = new Set([
     'one-liners',
-    'debugging',
-    'get-output',
-    'mcq'
+    'get-output'
 ]);
 
 function isAutoGradedCategory(rawCategory) {
     return AUTO_GRADED_CATEGORIES.has(formatQuestionType(rawCategory));
+}
+
+// 归一化答案文本，好做"标准答案自动比对"：统一换行、每行去尾空白、去掉外层空行、
+// 行内连续空白压成一个空格、去首尾空白。大小写【保留】（Python 里 True≠true、输出大小写有意义）。
+function normalizeExamAnswer(s) {
+    return String(s ?? '')
+        .replace(/\r\n/g, '\n')
+        .split('\n').map(l => l.replace(/\s+$/, '')).join('\n')
+        .replace(/^\n+|\n+$/g, '')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+}
+
+// 学生答案是否命中标准答案。
+//   - 标准答案里用 "or" 分隔的多个写法【任一命中都算对】（如 "6 or 6.0"、"True or 1"）。
+//   - 返回 true=对 / false=错 / null=没有标准答案(无法自动判,跳过)。
+function matchesStandardAnswer(student, solution) {
+    if (solution == null || String(solution).trim() === '') return null;
+    const stu = normalizeExamAnswer(student);
+    if (stu === '') return false;   // 没作答 = 错（0 分）
+    const alts = String(solution).split(/\bor\b/i).map(normalizeExamAnswer).filter(a => a !== '');
+    if (alts.length === 0) return false;
+    return alts.some(a => a === stu);
 }
 
 // 题型筛选的唯一数据源。Practice 和 Marked Questions 两处筛选器都从这里生成。
@@ -264,6 +285,48 @@ function syncAllStarButtonsForQuestion(questionId, isStarred) {
 // options.onUnstar 是个回调，只在 Revision 页面用——取消星标之后，把这道题从当前列表里移除
 // options.showGoToQuestion = true 时，会加一个"Go to Question"按钮，跳到 Practice 页面对应的 Test 分类并高亮这道题
 // options.showNote = true 时，题目下方会加一个小备注框（"为什么标了它"），失焦时自动保存
+// 判断题干是不是【一整段文字说明】(而不是代码)。是的话用衬线体展示，读着像卷面说明。
+// 代码的强信号：有 #数字 行号标记、或有缩进行。散文信号：较长 + 有句子标点、没上面那些代码特征。
+function looksLikeProseQuestion(text) {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    // 【最稳的规则】只有"单段流水文字"才用衬线：一旦有硬换行（说明它是多行结构——
+    // 代码、表格、示例运行/终端输出、或多段），一律保持等宽，免得比例字体把排版拆乱。
+    if (t.split('\n').filter(l => l.trim()).length > 1) return false;
+    if (/#\d/.test(t)) return false;                       // 行号标记 → 代码
+    const words = t.split(/\s+/).length;
+    const hasSentence = /[.?!]["')\]]?(\s|$)/.test(t);      // 够长 + 有句末标点 → 像一段话
+    return words >= 10 && hasSentence;
+}
+
+// 一小段文字算不算"介绍散文"(单段、够长、有句末标点、没有代码/缩进/表格信号)。
+// 允许以冒号结尾（如 "...a sample run looks like this:"）。
+function isIntroParagraph(s) {
+    const t = String(s || '').trim();
+    if (!t) return false;
+    if (/#\d/.test(t)) return false;
+    if (t.split('\n').some(l => /^\s{2,}\S/.test(l))) return false;          // 有缩进行 → 代码
+    if (/^\s*:?-{2,}:?(\s*[+|]\s*:?-{2,}:?)+\s*$/m.test(t)) return false;     // 表格分隔行
+    if (t.split('\n').filter(l => (l.match(/\|/g) || []).length >= 2).length >= 2) return false; // 表格
+    const words = t.split(/\s+/).length;
+    return words >= 6 && /[.?!:]["')\]]?(\s|$)/.test(t);
+}
+
+// 把题干拆成【开头介绍散文】+【下面的代码/示例/表格】。
+// 规则：第一处空行前如果是一段介绍散文、后面还有内容，就从这里拆开；否则返回 null（不拆）。
+function splitIntroAndBody(text) {
+    const t = String(text || '').replace(/\r\n/g, '\n');
+    const m = t.match(/^([\s\S]*?\S)\n[ \t]*\n([\s\S]*)$/);
+    if (!m) return null;
+    const intro = m[1].trim();
+    // body 去掉【开头多余的空行】（源数据里 "looks like this:" 后常有不止一个空行），
+    // 让代码/示例顶到框顶，不留一大块空白；首行本身的缩进保留。末尾空白也去掉。
+    const body = m[2].replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
+    if (!body.trim()) return null;
+    if (!isIntroParagraph(intro)) return null;
+    return { intro, body };
+}
+
 function buildQuestionBlock(question, options = {}) {
     const wrapper = document.createElement('div');
     wrapper.className = 'question-block';
@@ -285,9 +348,14 @@ function buildQuestionBlock(question, options = {}) {
 
     const labelP = document.createElement('p');
     labelP.className = 'question-label';
+    // 考试里按大题分组时(groupedUnderMain):有小题字母就显示 "a)"(大题号在头卡上);
+    // 没有小题字母(单题)就在这一行显示大题号 "4."——单题按【小题格式】排:题号+分值+Flag 同一行。
+    // 其余场合(Practice/Revision)照旧 "1a."。
     labelP.textContent = options.displayNumber !== undefined
         ? `${options.displayNumber}.`
-        : `${question.question_number}${question.subquestion_number ?? ''}.`;
+        : options.groupedUnderMain
+            ? (question.subquestion_number ? `${question.subquestion_number})` : `${question.question_number}.`)
+            : `${question.question_number}${question.subquestion_number ?? ''}.`;
     labelRow.appendChild(labelP);
 
     // 分值徽标：放在题号之后、Flag 按钮【左边】。只在录了分值时显示（null = 还没录，不摆）。
@@ -394,15 +462,36 @@ function buildQuestionBlock(question, options = {}) {
 
     wrapper.appendChild(labelRow);
 
-    const questionPre = document.createElement('pre');
-    questionPre.className = 'question-code';
-    // 只在「扫列表找题」的场景（Practice / Marked Questions）允许折叠。
-    // 真正折不折要等它进了 DOM 才知道——这里只是打个标记
-    if (options.collapseLongCode) {
-        questionPre.classList.add('question-code-collapsible');
+    // 题干排版分三种：
+    //   1) 开头是介绍散文 + 下面代码/示例/表格 → 介绍用衬线，代码/表格保持等宽对齐（拆开渲染）
+    //   2) 整段就是一段流水文字（没代码）→ 整段衬线
+    //   3) 其余（纯代码/表格/示例、多行结构）→ 整段等宽
+    const split = splitIntroAndBody(question.question_description);
+    if (split) {
+        const introEl = document.createElement('div');
+        introEl.className = 'question-intro-prose';
+        introEl.textContent = split.intro;
+        wrapper.appendChild(introEl);
+
+        const bodyPre = document.createElement('pre');
+        bodyPre.className = 'question-code';
+        if (options.collapseLongCode) bodyPre.classList.add('question-code-collapsible');
+        bodyPre.textContent = split.body;
+        wrapper.appendChild(bodyPre);
+    } else {
+        const questionPre = document.createElement('pre');
+        questionPre.className = 'question-code';
+        // 整段就是一段流水文字（不是代码）→ 衬线体、去掉代码框感，读着像卷面说明
+        if (looksLikeProseQuestion(question.question_description)) {
+            questionPre.classList.add('question-prose');
+        }
+        // 只在「扫列表找题」的场景（Practice / Marked Questions）允许折叠
+        if (options.collapseLongCode) {
+            questionPre.classList.add('question-code-collapsible');
+        }
+        questionPre.textContent = question.question_description;
+        wrapper.appendChild(questionPre);
     }
-    questionPre.textContent = question.question_description;
-    wrapper.appendChild(questionPre);
 
     if (options.showRating) {
         wrapper.appendChild(buildRatingWidget(question));
@@ -961,6 +1050,9 @@ function enterMarkingHold(paperId, totalElapsedSeconds) {
     // 用 body class 而不是 inline display——重置时一处清干净，不留残留样式
     document.body.classList.add('exam-marking-mode');
 
+    // 存一份"改卷阶段"会话：刷新页面能恢复到这里（答案 + 已打的分不丢）
+    saveMarkingSession(paperId, totalElapsedSeconds);
+
     const hold = document.createElement('div');
     hold.id = 'exam-marking-hold';
     hold.className = 'exam-marking-hold';
@@ -971,7 +1063,10 @@ function enterMarkingHold(paperId, totalElapsedSeconds) {
             Submit stays locked until all are marked, and once you view your results
             your marks are final — you can't change them.
         </p>
-        <button type="button" class="exam-marking-hold-btn" disabled>Submit</button>
+        <div class="exam-marking-hold-actions">
+            <button type="button" class="exam-marking-hold-quit" title="Leave this exam without saving marks">Quit exam</button>
+            <button type="button" class="exam-marking-hold-btn" disabled>Submit</button>
+        </div>
     `;
     container.parentNode.insertBefore(hold, container);
 
@@ -981,6 +1076,7 @@ function enterMarkingHold(paperId, totalElapsedSeconds) {
 
     hold.querySelector('.exam-marking-hold-btn').addEventListener('click', function () {
         if (this.disabled) return;
+        clearMarkingSession();   // 改卷提交 = 改卷阶段结束
         // 查看成绩后自评分锁死：所有输入设 readOnly，不能再改
         document.querySelectorAll('#testing-questions .self-assess-input').forEach(input => {
             input.readOnly = true;
@@ -988,6 +1084,19 @@ function enterMarkingHold(paperId, totalElapsedSeconds) {
         });
         hold.remove();
         finalizeExamResults(paperId, totalElapsedSeconds);
+    });
+
+    // "Quit exam"：快速退出这场考试，回到 Get Ready（不保存本次自评分）。
+    hold.querySelector('.exam-marking-hold-quit').addEventListener('click', () => {
+        if (!confirm('Quit this exam? You will go back to the start and your marks will not be saved.')) return;
+        clearExamSession();
+        clearMarkingSession();
+        const header = document.getElementById('testing-header');
+        const pid = header ? header.dataset.currentPaperId : paperId;
+        const title = header ? header.dataset.currentPaperTitle : '';
+        exitExamFocusMode();
+        loadTestingQuestions(pid, title);   // 整体重置回 Get Ready
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
     // 平滑滚到改卷说明条，别从答题位置硬跳到顶——配合 banner / 标准答案栏的
@@ -1007,6 +1116,11 @@ function allSelfMarksFilled() {
 
 // 根据"是否全部改完"启用/禁用改卷说明条上的 Submit 按钮
 function syncMarkingHoldSubmit() {
+    // 导航条同步:标出还需要自评打分的大题（放在按钮判断前，即使没有 hold 也刷新一次）
+    refreshMainNavNeedsMark();
+    // 把已打的分持久化，刷新后能恢复
+    persistMarkingMarks();
+
     const hold = document.getElementById('exam-marking-hold');
     if (!hold) return;
     const btn = hold.querySelector('.exam-marking-hold-btn');
@@ -1014,6 +1128,25 @@ function syncMarkingHoldSubmit() {
     const ready = allSelfMarksFilled();
     btn.disabled = !ready;
     btn.title = ready ? '' : 'Mark every question above before you can submit';
+}
+
+// 改卷阶段:在右侧导航条上标出【还需要自评打分】的大题（有小题的自评框还没填分）。
+// 学生一眼知道该去哪几个大题打分；某大题所有自评框都填了分，它的提示就撤掉。
+// 只在改卷模式(exam-marking-mode)生效；非改卷模式一律清掉提示。
+function refreshMainNavNeedsMark() {
+    const nav = getQuestionNav();
+    if (!nav) return;
+    const marking = document.body.classList.contains('exam-marking-mode');
+    document.querySelectorAll('#testing-questions .exam-main-question').forEach(sec => {
+        const btn = nav.querySelector(`[data-target-main="${sec.dataset.mainNumber}"]`);
+        if (!btn) return;
+        if (!marking) { btn.classList.remove('is-needs-mark'); return; }
+        // 改卷期间导航只表达"哪儿要打分"，清掉考试期间的已答/标记色
+        btn.classList.remove('is-answered', 'is-flagged');
+        const needs = [...sec.querySelectorAll('.self-assess-input')]
+            .some(inp => !Number.isFinite(parseFloat(inp.value)));
+        btn.classList.toggle('is-needs-mark', needs);
+    });
 }
 
 // 结果页每道题的「得分/总分」徽标，放在题号旁的分值徽标【左边】。
@@ -1029,25 +1162,36 @@ function scoreBandClass(earned, max) {
     return 'score-high';                     // 好 → 绿
 }
 
-// 把某题的得分色带同步到右侧题号导航的那个按钮：换成得分色，
-// 并清掉考试期间的「已答/标记」色（结果页不再保留那两种状态色）
-function setNavScoreBand(questionId, band) {
+// 导航按大题走，得分色也要【按大题聚合】：把一个大题下各小题的 earned/max 求和算比例，
+// 给这个大题的导航按钮上色。每次有小题加了得分徽标就重算一遍（题量小，够用）。
+function refreshMainNavScores() {
     const nav = getQuestionNav();
     if (!nav) return;
-    const btn = nav.querySelector(`[data-target-question="${questionId}"]`);
-    if (!btn) return;
-    btn.classList.remove('is-answered', 'is-flagged', 'is-score-low', 'is-score-mid', 'is-score-high');
-    if (band) btn.classList.add(`is-${band}`);
+    document.querySelectorAll('#testing-questions .exam-main-question').forEach(sec => {
+        const btn = nav.querySelector(`[data-target-main="${sec.dataset.mainNumber}"]`);
+        if (!btn) return;
+        let earned = 0, max = 0, any = false;
+        sec.querySelectorAll('.question-block').forEach(b => {
+            if (b.dataset.earned !== undefined && b.dataset.maxPoints !== undefined) {
+                earned += Number(b.dataset.earned) || 0;
+                max += Number(b.dataset.maxPoints) || 0;
+                any = true;
+            }
+        });
+        btn.classList.remove('is-answered', 'is-flagged', 'is-needs-mark', 'is-score-low', 'is-score-mid', 'is-score-high');
+        const band = any ? scoreBandClass(earned, max) : null;
+        if (band) btn.classList.add(`is-${band}`);
+    });
 }
 
 // 进结果页时统一清掉导航上考试期间的「已答/标记」色。
-// 有得分的题随后由 addEarnedBadge → setNavScoreBand 换上得分色；
+// 有得分的题随后由 addEarnedBadge → refreshMainNavScores 按大题聚合上色；
 // 没得分的题（没录 points）就回到中性白，不再顶着考试中的绿/红
 function clearNavExamStates() {
     const nav = getQuestionNav();
     if (!nav) return;
     nav.querySelectorAll('.exam-nav-item').forEach(btn => {
-        btn.classList.remove('is-answered', 'is-flagged');
+        btn.classList.remove('is-answered', 'is-flagged', 'is-needs-mark');
     });
 }
 
@@ -1073,8 +1217,12 @@ function addEarnedBadge(block, earned, max, mode) {
     if (pointsTag) labelRow.insertBefore(tag, pointsTag);
     else labelRow.appendChild(tag);
 
-    // 右侧题号导航联动同一得分色
-    setNavScoreBand(block.dataset.questionId, band);
+    // 把这道小题的得分记在 block 上，供大题导航聚合上色用
+    block.dataset.earned = earned;
+    block.dataset.maxPoints = max;
+
+    // 右侧导航按大题聚合上色（把本大题各小题的分求和）
+    refreshMainNavScores();
 }
 
 // 数字显示：整数就整数，带小数留一位（7 而不是 7.0；7.5 保留）
@@ -1118,13 +1266,15 @@ function restoreExamShell() {
 // 亮出全部结果：判分 + 存这次尝试 + Scoring Detail（含班级平均）+ 用时 + 历次 + 揭示动画。
 // 从 revealExamResults 拆出来，因为它可能【延后】到学生改完卷才跑（见 enterMarkingHold）。
 function finalizeExamResults(paperId, totalElapsedSeconds) {
+    // 结果出来了，改卷阶段结束——清掉改卷会话（不然刷新会又回到改卷）
+    clearMarkingSession();
     // 结果要出来了：把考试+改卷期间收起的外壳全展开（专注模式、VERSION、Retake、回顶），
     // 再放出卷面头卡（exam-marking-mode）——外壳、卷面卡、结果卡片一起出现
     restoreExamShell();
     document.body.classList.remove('exam-marking-mode');
 
     // 结果页刷新导航配色：先清掉考试期间的「已答/标记」色，
-    // 随后各题的得分色由 addEarnedBadge → setNavScoreBand 填上
+    // 随后各大题的得分色由 addEarnedBadge → refreshMainNavScores 聚合填上
     clearNavExamStates();
 
     // 自评题：把学生打的分变成题号旁的 "得分/总分" 铅笔徽标（自评框随后被 CSS 藏掉）。
@@ -1327,11 +1477,12 @@ function loadTestingQuestions(paperId, paperTitle) {
     //
     // 改成在源头判断，不管调用多少次、什么顺序，都不会覆盖已恢复的考试。
     const pendingSession = readExamSession(paperId);
+    // 改卷阶段的待恢复场次（交卷后、还没点改卷 Submit 时刷新的）。只有没有"考试中"会话时才算数
+    const pendingMarking = !pendingSession && readMarkingSession(paperId);
 
-    if (pendingSession) {
-        // 恢复的场次：标题要更新，其余状态一概不动。
-        // 真正切到「考试中」是在 fetch 的回调里做的——那时候题目元素才存在。
-        // 结算状态（exam-result-mode）也不清：这场考试还没结束
+    if (pendingSession || pendingMarking) {
+        // 恢复的场次（考试中 或 改卷中）：标题要更新，其余状态一概不动、不重置。
+        // 真正切回状态是在 fetch 回调里做的——那时候题目元素才存在。
         headerTitle.textContent = paperTitle;
     } else {
 
@@ -1512,31 +1663,75 @@ function loadTestingQuestions(paperId, paperTitle) {
         .then(data => {
             questionsContainer.innerHTML = '';   // 清掉加载提示，再填真正的题目
 
-            // 把真实题目数填进考卷卡片。题目是进页面就拉的、不是点 Start 才拉，
-            // 所以这个数在开考前就拿得到，不用编
+            // 把真实题目数填进考卷卡片。【按大题计数】——同一大题的 a/b/c 只算一题，
+            // 数的是不同的 question_number（跟考试内导航条按大题走保持一致）。
             const countEl = document.getElementById('exam-question-count');
-            if (countEl) countEl.textContent = String(data.length);
+            if (countEl) countEl.textContent = String(new Set(data.map(q => q.question_number)).size);
 
-            data.forEach(question => {
-                const wrapper = buildQuestionBlock(question, { showExamFlag: true });
+            // 【按大题分组】渲染,做成"像真考试":同一 question_number 的小题归到一个大题分组里,
+            // 分组顶部是"大题号 + 大题总说明(main_intro)",下面挂各小题(a/b/c)。
+            const groups = [];
+            const byNum = new Map();
+            data.forEach(q => {
+                if (!byNum.has(q.question_number)) {
+                    const g = { number: q.question_number, intro: q.main_intro, items: [] };
+                    byNum.set(q.question_number, g);
+                    groups.push(g);
+                }
+                const g = byNum.get(q.question_number);
+                if (!g.intro && q.main_intro) g.intro = q.main_intro;   // 兜底:取到第一段非空说明
+                g.items.push(q);
+            });
 
-                // 答题区和标准答案包在同一个容器里，交卷后并排显示。
-                //
-                // 并排的好处是能逐行对照，不用上下滚动来回看。
-                // 代价是两边宽度各减半，长代码会挤——所以窄屏下 CSS 会
-                // 自动堆叠回上下排列（见 .answer-compare 的媒体查询）
-                const compare = document.createElement('div');
-                compare.className = 'answer-compare';
+            groups.forEach(group => {
+                const section = document.createElement('section');
+                section.className = 'exam-main-question';
+                section.dataset.mainNumber = group.number;
 
-                compare.appendChild(buildAnswerEditor(question.id));
+                // 单题(只有一道、且没有小题字母) → 按【小题格式】排:题号+分值+Flag 同一行(在题块里)，
+                // 【不】单独摆一个大题号头卡。带小题(a/b/c)或多小题时才用大题头卡(大题号 + 说明)。
+                const standalone = group.items.length === 1 && !group.items[0].subquestion_number;
+                const introText = (group.intro && String(group.intro).trim()) ? String(group.intro).trim() : '';
 
-                // 标准答案这里【故意不建】。
-                // /testing/ 接口根本没返回 question_solution，
-                // 交卷后由 revealSolutions() 拉 /practice/ 补进这个容器
+                if (!standalone) {
+                    const head = document.createElement('div');
+                    head.className = 'exam-main-head';
+                    const numEl = document.createElement('span');
+                    numEl.className = 'exam-main-number';
+                    numEl.textContent = `${group.number}.`;
+                    head.appendChild(numEl);
+                    if (introText) {
+                        const introEl = document.createElement('div');
+                        introEl.className = 'exam-main-intro-text';
+                        introEl.textContent = introText;
+                        head.appendChild(introEl);
+                    }
+                    section.appendChild(head);
+                } else if (introText) {
+                    // 单题但有大题说明:只放说明(题号交给题块那一行)
+                    const head = document.createElement('div');
+                    head.className = 'exam-main-head exam-main-head-intro-only';
+                    const introEl = document.createElement('div');
+                    introEl.className = 'exam-main-intro-text';
+                    introEl.textContent = introText;
+                    head.appendChild(introEl);
+                    section.appendChild(head);
+                }
 
-                wrapper.appendChild(compare);
+                group.items.forEach(question => {
+                    const wrapper = buildQuestionBlock(question, { showExamFlag: true, groupedUnderMain: true });
 
-                questionsContainer.appendChild(wrapper);
+                    // 答题区和标准答案包在同一个容器里，交卷后并排显示（窄屏堆叠，见 .answer-compare 媒体查询）。
+                    // 标准答案【故意不建】——/testing/ 不返回答案，交卷后由 revealSolutions() 补。
+                    const compare = document.createElement('div');
+                    compare.className = 'answer-compare';
+                    compare.appendChild(buildAnswerEditor(question.id));
+                    wrapper.appendChild(compare);
+
+                    section.appendChild(wrapper);
+                });
+
+                questionsContainer.appendChild(section);
             });
 
             // 有未结束的考试就直接恢复到考试中，跳过 Get Ready 那两步。
@@ -1560,6 +1755,12 @@ function loadTestingQuestions(paperId, paperTitle) {
             if (session) {
                 restoreSavedAnswers(paperId);
                 enterExamInProgressState(session.endTime);
+            } else {
+                // 交卷后、改卷阶段刷新的：恢复到改卷阶段（答案 + 已打的分不丢）
+                const markingSession = readMarkingSession(paperId);
+                if (markingSession) {
+                    resumeMarkingPhase(paperId, markingSession);
+                }
             }
 
             triggerFadeIn(questionsContainer);
@@ -1664,6 +1865,57 @@ function enterExamInProgressState(resumeEndTime = null) {
     }, 700);
 }
 
+// 刷新后恢复到【改卷阶段】：交卷后、还没点改卷 Submit 时刷新了页面，
+// 不该把学生踢回 Get Ready（答案全没了很搞心态）。这里把页面重新摆成"已交卷·改卷中"，
+// 恢复后端存的作答 + 之前打的分，再进改卷说明条。计时已结束、不再倒计时。
+function resumeMarkingPhase(paperId, ms) {
+    const header = document.getElementById('testing-header');
+    const timerDisplay = document.getElementById('testing-timer');
+    const startBtn = document.getElementById('testing-start-btn');
+    const submitBtn = document.getElementById('testing-submit-btn');
+    const toggleTimerBtn = document.getElementById('timer-toggle-btn');
+    const questionsContainer = document.getElementById('testing-questions');
+    if (!header || !questionsContainer) return;
+
+    // 退出 Get Ready，摆成"已交卷"的专注布局（跟考试期一样藏页面骨架，不播动画）
+    document.body.classList.remove('exam-ready-mode');
+    header.classList.remove('exam-ready');
+    header.classList.add('exam-in-progress');
+    if (timerDisplay) {
+        timerDisplay.className = 'testing-timer timer-finished';
+        timerDisplay.textContent = 'Submitted';
+    }
+    if (startBtn) startBtn.style.display = 'none';
+    if (submitBtn) submitBtn.style.display = 'none';          // 考试的 Submit 不再需要
+    if (toggleTimerBtn) toggleTimerBtn.style.display = 'none';
+    questionsContainer.style.display = 'block';
+    enterExamFocusMode(true);
+
+    // 后端存着的作答填回来，并全部只读（交卷后不能改）
+    restoreSavedAnswers(paperId);
+    questionsContainer.querySelectorAll('.answer-editor-input').forEach(el => { el.readOnly = true; });
+
+    // 标记状态 + 导航条
+    flaggedQuestionIds = readExamFlags(header.dataset.currentPaperId);
+    questionsContainer.querySelectorAll('.question-block').forEach(b => refreshFlagButton(b.dataset.questionId));
+    buildQuestionNav();
+
+    // 揭晓标准答案（给非自动判的题装自评框）→ 进改卷阶段 → 把之前打的分恢复回去
+    revealSolutions(paperId).then(() => {
+        enterMarkingHold(paperId, ms.totalElapsedSeconds || 0);
+        if (ms.marks) {
+            Object.keys(ms.marks).forEach(qid => {
+                const val = ms.marks[qid];
+                if (val == null || val === '') return;
+                const input = questionsContainer.querySelector(
+                    `.question-block[data-question-id="${qid}"] .self-assess-input`);
+                if (input) input.value = val;
+            });
+            updateSelfAssessedTotal();   // 重算自评总分 + 同步 Submit 可点 + 导航 needs-mark
+        }
+    }).catch(err => console.error('Resume marking phase failed:', err));
+}
+
 // ---------- 考试会话的持久化 ----------
 // 刷新页面之后要能接着考，而不是从头开始。
 //
@@ -1727,6 +1979,50 @@ function readExamSession(paperId) {
         return null;
     }
 
+    return raw;
+}
+
+// ---------- 改卷阶段的持久化 ----------
+// 交卷之后进入"改卷"阶段（对着标准答案自评打分），这期间刷新页面【不能】把学生踢回 Get Ready、
+// 让答案和已打的分全没了（很搞心态）。所以把改卷阶段单独存一份，刷新后恢复到改卷阶段。
+// 作答本身存在后端（交卷时 flushAllAnswers），这里额外存"在改卷阶段 + 已打的分 + 用时"。
+const MARKING_SESSION_KEY = 'code100_exam_marking';
+
+function writeMarkingSession(obj) {
+    try { sessionStorage.setItem(MARKING_SESSION_KEY, JSON.stringify(obj)); } catch (e) { /* 忽略 */ }
+}
+function readMarkingSessionRaw() {
+    try { return JSON.parse(sessionStorage.getItem(MARKING_SESSION_KEY)); } catch (e) { return null; }
+}
+function saveMarkingSession(paperId, totalElapsedSeconds) {
+    const cur = readMarkingSessionRaw();
+    // 同一场就保留已存的 marks，只更新用时；换卷了就重开一份
+    const marks = (cur && String(cur.paperId) === String(paperId) && cur.marks) ? cur.marks : {};
+    writeMarkingSession({ paperId: String(paperId), totalElapsedSeconds: totalElapsedSeconds || 0, marks });
+}
+// 把当前每道自评题打的分写进会话，刷新后能恢复
+function persistMarkingMarks() {
+    const cur = readMarkingSessionRaw();
+    if (!cur) return;
+    const marks = {};
+    document.querySelectorAll('#testing-questions .self-assess-input').forEach(inp => {
+        const block = inp.closest('.question-block');
+        if (block) marks[block.dataset.questionId] = inp.value;
+    });
+    cur.marks = marks;
+    writeMarkingSession(cur);
+}
+function clearMarkingSession() {
+    try { sessionStorage.removeItem(MARKING_SESSION_KEY); } catch (e) { /* 忽略 */ }
+}
+// 页面初始化时判断该不该落在 Examination（拿不到 paperId，只看有没有）
+function hasPendingMarking() {
+    const raw = readMarkingSessionRaw();
+    return !!(raw && raw.paperId);
+}
+function readMarkingSession(paperId) {
+    const raw = readMarkingSessionRaw();
+    if (!raw || String(raw.paperId) !== String(paperId)) return null;
     return raw;
 }
 
@@ -2199,27 +2495,22 @@ function buildQuestionNav() {
     const container = document.getElementById('testing-questions');
     if (!nav || !container) return;
 
-    const blocks = [...container.querySelectorAll('.question-block')];
-    if (blocks.length === 0) return;
+    // 【导航按大题走】:一个大题一个按钮(数字 = 大题号),不再一小题一个。
+    const sections = [...container.querySelectorAll('.exam-main-question')];
+    if (sections.length === 0) return;
 
-    blocks.forEach(block => {
-        // 题号直接从已经渲染好的标签上读，不另外存一份到 dataset。
-        // 存两份的话，哪天题号的拼法改了（比如加上年份），
-        // 导航这边不会跟着变
-        const labelEl = block.querySelector('.question-label');
-        const label = labelEl ? labelEl.textContent.replace(/\.\s*$/, '').trim() : '•';
-
+    sections.forEach(sec => {
+        const num = sec.dataset.mainNumber;
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'exam-nav-item';
-        btn.textContent = label;
-        btn.dataset.targetQuestion = block.dataset.questionId;
-        btn.title = `Question ${label}`;
+        btn.textContent = num;
+        btn.dataset.targetMain = num;
+        btn.title = `Question ${num}`;
 
         btn.addEventListener('click', () => {
-            // scroll-margin-top 在 CSS 里，保证跳过去之后
-            // 题目不会被顶部的 Test 分类导航栏压住
-            block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // scroll-margin-top 在 CSS 里，保证跳过去之后不被顶部导航栏压住
+            sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
 
         nav.appendChild(btn);
@@ -2244,7 +2535,7 @@ function buildQuestionNav() {
     questionNavObserver = new IntersectionObserver(entries => {
         entries.forEach(entry => {
             const btn = nav.querySelector(
-                `[data-target-question="${entry.target.dataset.questionId}"]`
+                `[data-target-main="${entry.target.dataset.mainNumber}"]`
             );
             if (btn) btn.classList.toggle('is-current', entry.isIntersecting);
         });
@@ -2257,7 +2548,7 @@ function buildQuestionNav() {
         }
     }, { rootMargin: '-45% 0px -45% 0px' });
 
-    blocks.forEach(block => questionNavObserver.observe(block));
+    sections.forEach(sec => questionNavObserver.observe(sec));
 
     // 初始化在第一题。
     // ⚠️ 必须放在 observe() 【之后】：IntersectionObserver 一注册就会
@@ -2277,12 +2568,16 @@ function refreshQuestionNavAnswered() {
     const nav = getQuestionNav();
     if (!nav || nav.hidden) return;
 
-    document.querySelectorAll('#testing-questions .question-block').forEach(block => {
-        const textarea = block.querySelector('.answer-editor-input');
-        const btn = nav.querySelector(`[data-target-question="${block.dataset.questionId}"]`);
-        if (btn) {
-            btn.classList.toggle('is-answered', !!(textarea && textarea.value.trim()));
-        }
+    // 大题"已答"= 它下面【所有】小题都写了东西（有一个空着就不算，提醒还没做完）。
+    document.querySelectorAll('#testing-questions .exam-main-question').forEach(sec => {
+        const btn = nav.querySelector(`[data-target-main="${sec.dataset.mainNumber}"]`);
+        if (!btn) return;
+        const blocks = [...sec.querySelectorAll('.question-block')];
+        const allAnswered = blocks.length > 0 && blocks.every(b => {
+            const t = b.querySelector('.answer-editor-input');
+            return t && t.value.trim();
+        });
+        btn.classList.toggle('is-answered', allAnswered);
     });
 }
 
@@ -2294,135 +2589,76 @@ function refreshQuestionNavFlags() {
     const nav = getQuestionNav();
     if (!nav || nav.hidden) return;
 
-    nav.querySelectorAll('.exam-nav-item').forEach(btn => {
-        btn.classList.toggle(
-            'is-flagged',
-            flaggedQuestionIds.has(String(btn.dataset.targetQuestion))
-        );
+    // 大题"已标记"= 它下面【任一】小题被标记（学生标了某个小题要回来改，大题上就亮）。
+    document.querySelectorAll('#testing-questions .exam-main-question').forEach(sec => {
+        const btn = nav.querySelector(`[data-target-main="${sec.dataset.mainNumber}"]`);
+        if (!btn) return;
+        const anyFlagged = [...sec.querySelectorAll('.question-block')]
+            .some(b => flaggedQuestionIds.has(String(b.dataset.questionId)));
+        btn.classList.toggle('is-flagged', anyFlagged);
     });
 }
 
 // 交卷后触发判分。没有测试用例的题会被跳过，不影响其他题
 function gradeExamAnswers(paperId) {
-    if (typeof gradeQuestion !== 'function') {
-        console.warn('Grading engine not loaded.');
-        setNoAutoScore('Auto-checking is unavailable right now.');
-        return Promise.resolve(null);
-    }
-
-    // 成绩卡片先进入"计算中"状态。Pyodide 首次要下 3~4MB，
-    // 这段时间卡片上如果还挂着上一场的数字，会被当成本场的成绩
+    // 成绩卡片先进入"计算中"（马上算完，保留这一步只为不闪上一场的数字）
     setPerformanceCardPending(true);
-
     lastAutoScore = null;   // 本场自动分先清，算出来才填（Scoring Detail 的"You"要用）
 
-    // ⚠️ 必须 return 这条链：revealExamResults 拿它的返回值 .then() 去存尝试。
-    // 漏了 return 的话这里返回 undefined，调用方 undefined.then() 会抛 TypeError，
-    // 把 revealExamResults 拦在 exam-result-mode 之前——结果就是交卷后
-    // 题目还在、Correction 头也在，但分析卡整块不出现（排查过一次，别再删）
-    return fetch(`${APP_API_BASE}/api/questions/papers/${paperId}/test-cases`)
-        .then(res => res.ok ? res.json() : null)
-        .then(caseMap => {
-            if (!caseMap || Object.keys(caseMap).length === 0) {
-                // 这张卷子一条测试用例都没录。这是【当前的常态】——
-                // 目前只有第 6 题有用例，其余卷子都会走到这里
-                setNoAutoScore('No questions on this paper are auto-checked yet.');
-                return null;
-            }
+    // 【标准答案自动比对】：只判 one-liners / get-output。学生答案 vs 标准答案文本，
+    // 标准答案里用 "or" 列的多个写法任一命中都算对。其余题型走自评（revealSolutions 给它们装自评框）。
+    // 标准答案此时已由 revealSolutions() 渲染进每题的 .testing-answer 里（本函数在其 .then 之后跑）。
+    const blocks = [...document.querySelectorAll('#testing-questions .question-block')];
 
-            const blocks = [...document.querySelectorAll('#testing-questions .question-block')];
-            const jobs = [];
+    let autoPoints = 0, autoMax = 0, gradedCount = 0, sawAuto = false;
 
-            blocks.forEach(block => {
-                const questionId = block.dataset.questionId;
+    blocks.forEach(block => {
+        if (!isAutoGradedCategory(block.dataset.questionCategory)) return;
+        sawAuto = true;
 
-                // 只判这四类：one-liners / debugging / get-output / mcq。
-                // 其余的题（half-program、full-program）走自评，
-                // 由 revealSolutions() 给它们装自评界面。
-                //
-                // 这个判断放在取用例【之前】：万一某道大题被误录了测试用例，
-                // 也不该拿去自动判——题型才是唯一的依据
-                if (!isAutoGradedCategory(block.dataset.questionCategory)) return;
+        const textarea = block.querySelector('.answer-editor-input');
+        const student = textarea ? textarea.value : '';
+        const solEl = block.querySelector('.testing-answer');
+        const solution = solEl ? solEl.textContent : '';
 
-                const cases = caseMap[questionId];
-                if (!cases || cases.length === 0) return;   // 这道题没录用例，跳过
+        const verdict = matchesStandardAnswer(student, solution);   // true=对 / false=错 / null=没标准答案
+        if (verdict === null) return;   // 没标准答案：判不了，跳过（不计入总分）
 
-                const textarea = block.querySelector('.answer-editor-input');
-                const code = textarea ? textarea.value : '';
+        // 权重：录了 points 就按 points，没录就 1 分/题（跟自评的绝对分能相加成总分）
+        const points = Number(block.dataset.points);
+        const weight = Number.isFinite(points) && points > 0 ? points : 1;
 
-                // 这道题的权重：录了 points 就按 points，没录就 1 分/题（等权）。
-                // 自动分做成加权绝对分（auto_points / auto_max）而不是纯百分比平均，
-                // 是为了跟自评分（也是绝对分）能相加成总分，且录 points 后自动生效
-                const points = Number(block.dataset.points);
-                const weight = Number.isFinite(points) && points > 0 ? points : 1;
+        // 对/错面板（复用满分绿 is-full / 零分红 is-zero 两套底色），放在并排对照区上面
+        const panel = document.createElement('div');
+        panel.className = 'grade-panel ' + (verdict ? 'is-full' : 'is-zero');
+        panel.innerHTML = verdict
+            ? '<strong>✓ Correct</strong> — matches the model answer.'
+            : '<strong>✗ Not matched</strong> — compare with the model answer on the right.';
+        block.insertBefore(panel, block.querySelector('.answer-compare'));
 
-                // 每道题一个"判分中"的占位
-                const panel = document.createElement('div');
-                panel.className = 'grade-panel is-pending';
-                panel.innerHTML = `
-                    <span class="grade-spinner"></span>
-                    <span class="grade-pending-text">Checking your answer…</span>
-                `;
-                // 判分面板放在对照区【上面】：先看得分和哪条没过，
-                // 再往下逐行对照代码。
-                // ⚠️ 插入点从 .testing-answer 改成 .answer-compare——
-                // 标准答案现在包在对照容器里，不再是 block 的直接子元素，
-                // 用旧的选择器会插到容器【内部】，破坏并排布局
-                block.insertBefore(panel, block.querySelector('.answer-compare'));
+        const earned = verdict ? weight : 0;
+        // 题号旁的"得分/总分"云徽标（只在录了 points 时加；顺带联动大题导航得分色）
+        if (Number.isFinite(points) && points > 0) {
+            addEarnedBadge(block, earned, points, 'auto');
+        }
 
-                jobs.push(
-                    gradeQuestion(code, cases)
-                        .then(result => {
-                            renderGradeResult(panel, result);
-                            // 结果页题号旁的「得分/总分」云徽标。只在录了 points 时加
-                            // （没 points 就没绝对总分）；没作答/跳过的题不加
-                            if (Number.isFinite(points) && points > 0 && result && !result.skipped) {
-                                addEarnedBadge(block, Math.round(result.score / 100 * points), points, 'auto');
-                            }
-                            return { result, weight };
-                        })
-                        .catch(error => {
-                            console.error('Grading failed:', error);
-                            panel.className = 'grade-panel is-error';
-                            panel.textContent = 'Could not check this answer.';
-                            return null;   // 这道题算不出来，不计入总分
-                        })
-                );
-            });
+        autoPoints += earned;
+        autoMax += weight;
+        gradedCount++;
+    });
 
-            // 全部判完再算总分。
-            // 用 Promise.all 而不是逐题累加：逐题累加的话总分会一格一格往上跳，
-            // 而且中途的数字是没有意义的"半场比分"
-            return Promise.all(jobs).then(entries => {
-                const valid = entries.filter(e => e && e.result && !e.result.skipped);
-                if (valid.length === 0) {
-                    // 有用例，但没有一道题算出结果——通常是这几道题都没作答
-                    setNoAutoScore('Nothing to auto-check — none of the auto-checked questions were answered.');
-                    return null;
-                }
+    if (!sawAuto || gradedCount === 0) {
+        // 没有可自动判的题（或这些题都没录标准答案）——老实说明，绝不编分
+        setNoAutoScore('No questions on this paper are auto-checked.');
+        return null;
+    }
 
-                // 加权绝对分：每题 (通过率 × 权重) 累加。题内部的用例权重已经在
-                // gradeQuestion 里折算进 result.score（0~100）了
-                let autoPoints = 0;
-                let autoMax = 0;
-                valid.forEach(e => {
-                    autoPoints += (e.result.score / 100) * e.weight;
-                    autoMax += e.weight;
-                });
+    const overall = Math.round(autoPoints / autoMax * 100);
+    applyRealScore(overall, gradedCount);
+    lastAutoScore = { points: autoPoints, max: autoMax };   // 供 Scoring Detail 的"You"
 
-                const overall = Math.round(autoPoints / autoMax * 100);
-                applyRealScore(overall, valid.length);
-
-                lastAutoScore = { points: autoPoints, max: autoMax };   // 供 Scoring Detail 的"You"
-
-                // 交给调用方（revealExamResults）去存这次尝试
-                return { autoPoints, autoMax, gradedCount: valid.length };
-            });
-        })
-        .catch(error => {
-            console.error('Failed to load test cases:', error);
-            setNoAutoScore('Could not check your answers — please try again later.');
-        });
+    // 交给调用方（finalizeExamResults）去存这次尝试
+    return { autoPoints, autoMax, gradedCount };
 }
 
 // 成绩卡片的"计算中"状态
@@ -3516,6 +3752,7 @@ function startTestingTimer(resumeEndTime = null) {
         warned5 = false;
         warned1 = false;
         warnedTimesUp = false;
+        clearMarkingSession();   // 新开一场考试：清掉上一场遗留的改卷会话
     }
 
     countdownEndTime = resumeEndTime || (Date.now() + COUNTDOWN_TOTAL_SECONDS * 1000);

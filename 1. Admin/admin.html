@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin — Code 100</title>
-    <link rel="stylesheet" href="admin.css">
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <link rel="stylesheet" href="admin.css?v=20260830e">
 </head>
 <body>
 
@@ -36,19 +35,20 @@
                 </div>
             </div>
 
-            <button type="button" class="admin-nav-item active" data-section="questions">Question Bank</button>
+            <button type="button" class="admin-nav-item active" data-section="import">Import Exam</button>
+            <button type="button" class="admin-nav-item" data-section="questions">Add Question</button>
+            <button type="button" class="admin-nav-item" data-section="all-questions">All Questions</button>
             <button type="button" class="admin-nav-item" data-section="cribsheet">Cribsheet Library</button>
-            <button type="button" class="admin-nav-item" data-section="note-sizes">Note Sizes</button>
             <button type="button" class="admin-nav-item" data-section="users">Users</button>
         </nav>
 
         <main class="admin-content">
 
-            <!-- ================= Question Bank ================= -->
-            <section class="admin-section active" id="section-questions">
+            <!-- ================= Add Question (表单) ================= -->
+            <section class="admin-section" id="section-questions">
                 <header class="admin-section-header">
-                    <h1>Question Bank</h1>
-                    <p class="subtitle">Add, edit, delete, and search test questions</p>
+                    <h1>Add Question</h1>
+                    <p class="subtitle">Add a new question, or edit an existing one</p>
                 </header>
 
                 <section class="card">
@@ -97,13 +97,9 @@
                             <input type="text" id="question-topic-input" placeholder="e.g. Loops">
                         </div>
 
-                        <div class="form-row scan-row">
-                            <label for="scan-image-input">Scan Question from Image (optional)</label>
-                            <div class="scan-controls">
-                                <input type="file" id="scan-image-input" accept="image/*">
-                                <button type="button" id="scan-image-btn" class="scan-btn">Scan → Fill Description</button>
-                            </div>
-                            <span id="scan-status" class="scan-status"></span>
+                        <div class="form-row">
+                            <label for="question-main-intro-input">Main intro — shared lead-in for this question's parts (optional)</label>
+                            <textarea id="question-main-intro-input" rows="2" placeholder="e.g. Assume each of the following is an individual program. Write the exact output…"></textarea>
                         </div>
 
                         <div class="form-row">
@@ -137,9 +133,16 @@
                     </form>
                 </section>
 
-                <section class="card">
-                    <h2>All Questions</h2>
+            </section>
 
+            <!-- ================= All Questions (浏览/筛选) ================= -->
+            <section class="admin-section" id="section-all-questions">
+                <header class="admin-section-header">
+                    <h1>All Questions</h1>
+                    <p class="subtitle">Browse, filter, edit, and delete questions</p>
+                </header>
+
+                <section class="card">
                     <div class="filter-row">
                         <div>
                             <label for="filter-paper-select">Paper</label>
@@ -172,6 +175,34 @@
                         <!-- 由 JS 动态填充，每个 Test 分类一个可折叠的 folder -->
                     </div>
                 </section>
+            </section>
+
+            <!-- ================= Import Exam (AI) ================= -->
+            <section class="admin-section active" id="section-import">
+                <header class="admin-section-header">
+                    <h1>Import Exam</h1>
+                    <p class="subtitle">Upload the exam pages — AI splits them into questions. Review, then create them all.</p>
+                </header>
+
+                <section class="card">
+                    <label for="import-file">Upload exam file(s)</label>
+                    <div class="import-file-row">
+                        <input type="file" id="import-file" multiple accept="image/*">
+                    </div>
+                    <p class="import-hint import-hint-muted">Images are read directly by AI vision (no OCR). Upload the exam pages (add or remove below), then Parse.</p>
+
+                    <!-- 已选文件:每个一张可删的小卡片。由 JS 填充 -->
+                    <div id="import-file-list" class="import-file-list"></div>
+
+                    <div class="import-actions">
+                        <button type="button" id="import-parse-btn" class="admin-primary-btn">✨ Parse with AI</button>
+                        <span class="import-status" id="import-status"></span>
+                    </div>
+                    <p class="import-hint">⚠️ AI can mis-read code indentation, question type, or topic. Always review each question before creating.</p>
+                </section>
+
+                <!-- 解析结果:每题一张可编辑卡,复核后一键批量创建。由 JS 填充 -->
+                <div id="import-results"></div>
             </section>
 
             <!-- ================= Cribsheet Library ================= -->
@@ -230,55 +261,6 @@
                 </section>
             </section>
 
-            <!-- ================= Note Sizes ================= -->
-            <section class="admin-section" id="section-note-sizes">
-                <header class="admin-section-header">
-                    <h1>Note Sizes</h1>
-                    <p class="subtitle">Fixed grid sizes students can choose from when adding a note to their Cribsheet (grid is 12 columns wide)</p>
-                </header>
-
-                <section class="card">
-                    <h2>Add New Size</h2>
-                    <form id="note-size-form" novalidate>
-                        <div class="form-row form-row-inline">
-                            <div>
-                                <label for="note-size-name-input">Name</label>
-                                <input type="text" id="note-size-name-input" placeholder="e.g. Small">
-                            </div>
-                            <div>
-                                <label for="note-size-cols-input">Columns (1-12)</label>
-                                <input type="number" id="note-size-cols-input" min="1" max="12">
-                            </div>
-                            <div>
-                                <label for="note-size-rows-input">Rows</label>
-                                <input type="number" id="note-size-rows-input" min="1">
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="submit" id="note-size-submit-btn">Add Size</button>
-                        </div>
-                    </form>
-                </section>
-
-                <section class="card">
-                    <h2>All Sizes</h2>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Name</th>
-                                    <th>Columns</th>
-                                    <th>Rows</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="note-sizes-table-body"></tbody>
-                        </table>
-                    </div>
-                </section>
-            </section>
-
             <!-- ================= Users ================= -->
             <section class="admin-section" id="section-users">
                 <header class="admin-section-header">
@@ -319,6 +301,6 @@
     <div id="toast-container"></div>
 
     <script src="../0. Shared/config.js"></script>
-    <script src="admin.js"></script>
+    <script src="admin.js?v=20260830e"></script>
 </body>
 </html>
