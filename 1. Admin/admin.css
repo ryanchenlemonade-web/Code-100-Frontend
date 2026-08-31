@@ -295,6 +295,24 @@ button {
     line-height: 1.5;   /* 行距松一点,好读;又不到空一整行 */
 }
 
+/* 复核卡里的每个 label 独占一行,标签和输入框上下排整齐 */
+.import-q-card > label {
+    display: block;
+    margin: 12px 0 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--admin-text);
+}
+
+/* Main intro 是整段说明(非代码):整行块级、普通字体 */
+.imp-intro {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
 #cancel-edit-btn {
     background-color: hsl(0, 0%, 92%);
     color: var(--admin-text);
