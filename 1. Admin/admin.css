@@ -640,6 +640,167 @@ td.description-cell {
     border-bottom: 1px solid var(--admin-border);
 }
 
+/* 数据源开关(Local/Online),跟 Course 开关一个风格 */
+.admin-env-switch {
+    margin: 0 8px 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--admin-border);
+}
+.admin-env-switch label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(0, 0%, 45%);
+    margin-bottom: 6px;
+}
+.admin-env-switch select { width: 100%; padding: 6px 8px; }
+
+/* 当前数据源横幅:Online 琥珀(醒目但不刺眼)、Local 灰 */
+.admin-env-banner {
+    margin: 0 0 18px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+.admin-env-banner.is-online {
+    background: hsl(38, 92%, 95%);
+    border: 1px solid hsl(38, 65%, 78%);
+    color: hsl(32, 65%, 36%);
+}
+.admin-env-banner.is-local {
+    background: hsl(220, 15%, 95%);
+    border: 1px solid hsl(220, 12%, 85%);
+    color: hsl(220, 12%, 40%);
+}
+
+/* Import 页的"→ Local"小标 + Publish 卡片 */
+.import-local-tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: hsl(220, 12%, 45%);
+    background: hsl(220, 15%, 92%);
+    border-radius: 6px;
+    padding: 3px 8px;
+    vertical-align: middle;
+}
+.admin-publish-card { border: 1px dashed hsl(212, 45%, 78%); background: hsl(212, 60%, 98%); }
+.admin-publish-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.admin-publish-row p { margin: 4px 0 0; font-size: 0.85rem; color: var(--admin-ink-soft, #666); }
+.admin-publish-row .admin-primary-btn { white-space: nowrap; }
+
+/* 复核卡片:加粗预览条(只在文本域含 **加粗** 时出现) */
+.imp-preview {
+    display: none;
+    margin: -4px 0 10px;
+    padding: 8px 12px;
+    border-left: 3px solid hsl(212, 70%, 70%);
+    background: hsl(212, 50%, 97%);
+    border-radius: 0 6px 6px 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--admin-text);
+    white-space: pre-wrap;
+}
+.imp-preview strong { font-weight: 700; }
+
+/* ===== Add/Edit 弹窗(从 All Questions 打开,浮在当前页上) ===== */
+body.admin-modal-open { overflow: hidden; }
+.admin-modal[hidden] { display: none; }
+.admin-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 44px 16px;
+    overflow-y: auto;
+}
+.admin-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: hsla(220, 22%, 12%, 0.45);
+}
+.admin-modal-card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 720px;
+    background: #fff;
+    border-radius: 14px;
+    padding: 28px 30px 26px;
+    box-shadow: 0 22px 64px hsla(220, 30%, 10%, 0.32);
+}
+.admin-modal-card h2 { margin: 0 0 18px; }
+.admin-modal-close {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: none;
+    cursor: pointer;
+    font-size: 1.05rem;
+    line-height: 1;
+    color: var(--admin-weak);
+}
+.admin-modal-close:hover { background: hsl(0, 0%, 94%); }
+
+/* All Questions 头部:标题左、Add 按钮右 */
+.admin-section-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+/* 文件夹 summary 里的 "+ Add" 小按钮(在 Delete all 旁边) */
+.folder-add-btn {
+    margin-left: 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--admin-blue);
+    background: hsl(212, 100%, 96%);
+    border: 1px solid hsl(212, 70%, 85%);
+    border-radius: 6px;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+.folder-add-btn:hover { background: hsl(212, 100%, 92%); }
+.imp-preview::before {
+    content: "Preview";
+    display: block;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(212, 30%, 55%);
+    margin-bottom: 3px;
+}
+
+/* Publish 是"写生产"的动作 —— 红调按钮,hover 加深 + 泛红阴影提个醒 */
+#publish-online-btn {
+    background-color: hsl(349, 62%, 55%);
+    border: none;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+#publish-online-btn:hover:not(:disabled) {
+    background-color: hsl(349, 60%, 48%);
+    box-shadow: 0 4px 16px hsla(349, 62%, 50%, 0.3);
+}
+
 .admin-course-switch label {
     display: block;
     font-size: 0.72rem;
@@ -704,6 +865,26 @@ td.description-cell {
 .admin-nav-item.active {
     background: hsl(212, 100%, 94%);
     color: var(--admin-blue);
+    font-weight: 700;
+}
+
+/* Publish 单独一块:分隔线 + 写生产的红调标记 */
+.admin-nav-sep {
+    height: 1px;
+    margin: 10px 12px;
+    background: var(--admin-border);
+}
+.admin-nav-publish {
+    color: hsl(0, 60%, 42%);
+    font-weight: 600;
+}
+.admin-nav-publish:hover {
+    background: hsl(0, 72%, 96%);
+    box-shadow: inset 0 0 0 1px hsl(0, 60%, 85%);
+}
+.admin-nav-publish.active {
+    background: hsl(0, 72%, 95%);
+    color: hsl(0, 62%, 40%);
     font-weight: 700;
 }
 

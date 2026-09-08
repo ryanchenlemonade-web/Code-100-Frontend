@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin — Code 100</title>
-    <link rel="stylesheet" href="admin.css?v=20260830f">
+    <link rel="stylesheet" href="../0. Shared/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="admin.css?v=20260904b">
 </head>
 <body>
 
@@ -35,23 +36,38 @@
                 </div>
             </div>
 
+            <!-- 数据源开关:All Questions / Users / 单条 Add·Edit / Cribsheet 跟它走。
+                 Import Exam 永远写本地。切换会刷新页面(用新环境重载)。 -->
+            <div class="admin-env-switch">
+                <label for="admin-env-select">数据源 Data</label>
+                <select id="admin-env-select">
+                    <option value="local">Local(本地测试)</option>
+                    <option value="online">Online(线上·实时)</option>
+                </select>
+            </div>
+
             <button type="button" class="admin-nav-item active" data-section="import">Import Exam</button>
-            <button type="button" class="admin-nav-item" data-section="questions">Add Question</button>
             <button type="button" class="admin-nav-item" data-section="all-questions">All Questions</button>
             <button type="button" class="admin-nav-item" data-section="cribsheet">Cribsheet Library</button>
             <button type="button" class="admin-nav-item" data-section="users">Users</button>
+
+            <!-- Publish 单独一块:把本地题库推到线上(写生产,hover 泛红提醒) -->
+            <div class="admin-nav-sep"></div>
+            <button type="button" class="admin-nav-item admin-nav-publish" data-section="publish"><i class="fa-solid fa-cloud-arrow-up"></i> Publish to Online</button>
         </nav>
 
         <main class="admin-content">
 
-            <!-- ================= Add Question (表单) ================= -->
-            <section class="admin-section" id="section-questions">
-                <header class="admin-section-header">
-                    <h1>Add Question</h1>
-                    <p class="subtitle">Add a new question, or edit an existing one</p>
-                </header>
+            <!-- 当前数据源横幅:Online 红、Local 灰,随时提醒你在动哪个库。由 JS 填 class/文本。 -->
+            <div id="admin-env-banner" class="admin-env-banner"></div>
 
-                <section class="card">
+            <!-- ================= Add / Edit Question (弹窗) =================
+                 从 All Questions 里点 "+ Add" 或某题的 Edit 打开,浮在当前页上,
+                 不再跳到独立页面 —— 所以编辑不会"乱跳转"。 -->
+            <div id="question-modal" class="admin-modal" hidden>
+                <div class="admin-modal-backdrop" data-modal-close></div>
+                <div class="admin-modal-card">
+                    <button type="button" class="admin-modal-close" data-modal-close title="Close">✕</button>
                     <h2 id="form-title">Add New Question</h2>
 
                     <form id="question-form" novalidate>
@@ -131,15 +147,17 @@
                             <button type="button" id="cancel-edit-btn" style="display: none;">Cancel Edit</button>
                         </div>
                     </form>
-                </section>
-
-            </section>
+                </div>
+            </div>
 
             <!-- ================= All Questions (浏览/筛选) ================= -->
             <section class="admin-section" id="section-all-questions">
-                <header class="admin-section-header">
-                    <h1>All Questions</h1>
-                    <p class="subtitle">Browse, filter, edit, and delete questions</p>
+                <header class="admin-section-header admin-section-header-row">
+                    <div>
+                        <h1>All Questions</h1>
+                        <p class="subtitle">Browse, filter, add, edit, and delete questions</p>
+                    </div>
+                    <button type="button" id="add-question-btn" class="admin-primary-btn"><i class="fa-solid fa-plus"></i> Add Question</button>
                 </header>
 
                 <section class="card">
@@ -180,8 +198,8 @@
             <!-- ================= Import Exam (AI) ================= -->
             <section class="admin-section active" id="section-import">
                 <header class="admin-section-header">
-                    <h1>Import Exam</h1>
-                    <p class="subtitle">Upload the exam pages — AI splits them into questions. Review, then create them all.</p>
+                    <h1>Import Exam <span class="import-local-tag">→ Local</span></h1>
+                    <p class="subtitle">Upload the exam pages — AI splits them into questions. Review, then create them all. Imports always go to <strong>Local</strong> for testing; publish to Online when ready.</p>
                 </header>
 
                 <section class="card">
@@ -195,7 +213,7 @@
                     <div id="import-file-list" class="import-file-list"></div>
 
                     <div class="import-actions">
-                        <button type="button" id="import-parse-btn" class="admin-primary-btn">✨ Parse with AI</button>
+                        <button type="button" id="import-parse-btn" class="admin-primary-btn"><i class="fa-solid fa-wand-magic-sparkles"></i> Parse with AI</button>
                         <span class="import-status" id="import-status"></span>
                     </div>
                     <p class="import-hint">⚠️ AI can mis-read code indentation, question type, or topic. Always review each question before creating.</p>
@@ -295,12 +313,32 @@
                 </section>
             </section>
 
+            <!-- ================= Publish to Online ================= -->
+            <section class="admin-section" id="section-publish">
+                <header class="admin-section-header">
+                    <h1>Publish to Online</h1>
+                    <p class="subtitle">Push the questions you built &amp; tested locally up to the live site.</p>
+                </header>
+
+                <!-- 本地测好了,一键把本地题库同步到线上(幂等,只加新题) -->
+                <section class="card admin-publish-card">
+                    <div class="admin-publish-row">
+                        <div>
+                            <strong>Publish local → online</strong>
+                            <p>Only <strong>new</strong> questions are added — anything already online is left untouched. Safe to re-run.</p>
+                        </div>
+                        <button type="button" id="publish-online-btn" class="admin-primary-btn"><i class="fa-solid fa-cloud-arrow-up"></i> Publish local → online</button>
+                    </div>
+                    <span class="import-status" id="publish-status"></span>
+                </section>
+            </section>
+
         </main>
     </div>
 
     <div id="toast-container"></div>
 
     <script src="../0. Shared/config.js"></script>
-    <script src="admin.js?v=20260830f"></script>
+    <script src="admin.js?v=20260904b"></script>
 </body>
 </html>

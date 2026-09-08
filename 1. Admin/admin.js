@@ -1,6 +1,14 @@
 // admin.js
 
-const API_BASE = APP_API_BASE + '/api';
+// 两个后端:本地(IntelliJ,localhost:8080)和线上(Render→Aiven)。
+const LOCAL_API = 'http://localhost:8080/api';
+const ONLINE_API = 'https://code-100-backend.onrender.com/api';
+
+// 当前"数据源"环境。All Questions / Users / 单条 Add·Edit / Cribsheet 跟它走;
+// Import Exam 永远写本地(见 initExamImport 里固定用 LOCAL_API)。
+let ADMIN_ENV = (localStorage.getItem('admin_env') === 'online') ? 'online' : 'local';
+function envBase() { return ADMIN_ENV === 'online' ? ONLINE_API : LOCAL_API; }
+
 const ADMIN_KEY_STORAGE = 'code100_admin_key';
 
 // ---------- 密钥门禁 ----------
@@ -34,8 +42,9 @@ async function adminFetch(url, options = {}) {
 async function tryEnterAdmin(key) {
     localStorage.setItem(ADMIN_KEY_STORAGE, key);
     try {
-        // 用一个真实的 admin 接口验证密钥对不对，而不是只在前端本地判断
-        const response = await fetch(`${API_BASE}/admin/users`, {
+        // 用一个真实的 admin 接口验证密钥对不对。固定验线上(两边 key 一样,线上最稳,
+        // 本地后端没开也能进门;进门后再由"数据源"开关决定各页面连哪)
+        const response = await fetch(`${ONLINE_API}/admin/users`, {
             headers: { 'X-Admin-Key': key }
         });
         if (response.ok) {
@@ -118,6 +127,13 @@ function escapeHTMLAttr(str) {
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s]));
 }
 
+// 复核卡片的加粗预览:把 **词** 渲染成 <strong>,跟学生端一致(单个 ** 不匹配,
+// 所以 Python 的 `2 ** 3` 不会被误伤)。只用于预览展示,存库仍是文本域里的原文。
+function boldPreviewHTML(text) {
+    const esc = String(text ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    return esc.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+}
+
 function getAdminCourse() {
     return localStorage.getItem(ADMIN_COURSE_STORAGE) || DEFAULT_ADMIN_COURSE;
 }
@@ -141,7 +157,7 @@ async function initCourseSwitcher() {
     async function loadCourseOptions(selected) {
         let courses = [];
         try {
-            const res = await adminFetch(`${API_BASE}/papers`);   // 不带 course = 全部课程
+            const res = await adminFetch(`${envBase()}/papers`);   // 不带 course = 全部课程
             const papers = await res.json();
             courses = [...new Set(papers.map(p => p.course).filter(Boolean))];
         } catch (e) {
@@ -177,6 +193,8 @@ function initAdminApp() {
     if (adminAppInitialized) return;
     adminAppInitialized = true;
 
+    initEnvSwitch();   // 数据源开关 + 横幅,先摆好(各 section 按当前环境拉数据)
+
     // 课程切换器先起：它异步填充下拉，但 getAdminCourse() 是同步的，
     // 下面各 section 初始化时立刻就能按当前课程拉数据
     initCourseSwitcher();
@@ -186,6 +204,144 @@ function initAdminApp() {
     initExamImport();
     initCribsheetLibrary();
     initUserManagement();
+    initPublishToOnline();
+}
+
+// ============================================================
+// 数据源开关(Local / Online) + 顶部横幅
+// ============================================================
+function initEnvSwitch() {
+    const sel = document.getElementById('admin-env-select');
+    renderEnvBanner();
+    applyEnvVisibility();
+    if (!sel) return;
+    sel.value = ADMIN_ENV;
+    sel.addEventListener('change', () => {
+        const next = sel.value === 'online' ? 'online' : 'local';
+        if (next === ADMIN_ENV) return;
+        localStorage.setItem('admin_env', next);
+        // 直接整页刷新,用新环境重载所有数据——最稳,不用逐个重绑
+        location.reload();
+    });
+}
+
+function renderEnvBanner() {
+    const banner = document.getElementById('admin-env-banner');
+    if (!banner) return;
+    if (ADMIN_ENV === 'online') {
+        banner.className = 'admin-env-banner is-online';
+        banner.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Online · 线上实时库';
+    } else {
+        banner.className = 'admin-env-banner is-local';
+        banner.textContent = 'Local · 本地测试库';
+    }
+}
+
+// Online 只保留 All Questions / Users(不出现任何上传/录入入口,免得误改生产库);
+// Local 才显示 Import Exam / Add Question / Cribsheet。
+const ONLINE_ONLY_SECTIONS = ['all-questions', 'users'];
+function applyEnvVisibility() {
+    const online = ADMIN_ENV === 'online';
+    document.querySelectorAll('.admin-nav-item').forEach(btn => {
+        const keep = !online || ONLINE_ONLY_SECTIONS.includes(btn.dataset.section);
+        btn.style.display = keep ? '' : 'none';
+    });
+    // 当前停在一个被隐藏的 section 上,自动跳到 All Questions
+    if (online) {
+        const active = document.querySelector('.admin-nav-item.active');
+        if (!active || !ONLINE_ONLY_SECTIONS.includes(active.dataset.section)) {
+            showAdminSection('all-questions');
+        }
+    }
+}
+
+// ============================================================
+// 一键发布:把【本地】题库同步到【线上】(幂等 upsert)
+// ============================================================
+function initPublishToOnline() {
+    const btn = document.getElementById('publish-online-btn');
+    if (!btn || btn.dataset.wired) return;
+    btn.dataset.wired = '1';
+    const statusEl = document.getElementById('publish-status');
+    const setStatus = (m, err = false) => { if (statusEl) { statusEl.textContent = m || ''; statusEl.classList.toggle('is-error', !!err); } };
+
+    const qKey = q => `${q.testCategory}|${q.year}|${q.question_number}|${q.subquestion_number || ''}`;
+
+    btn.addEventListener('click', async () => {
+        const course = getAdminCourse();
+        btn.disabled = true;
+        setStatus('读取本地 + 线上题库…');
+        try {
+            const localQs = await adminFetch(`${LOCAL_API}/questions/admin-list?course=${encodeURIComponent(course)}`).then(r => r.json());
+            if (!Array.isArray(localQs) || !localQs.length) { setStatus('本地没有可发布的题。', true); btn.disabled = false; return; }
+
+            const onlinePapers = await adminFetch(`${ONLINE_API}/papers?course=${encodeURIComponent(course)}`).then(r => r.json());
+            const onlineQs = await adminFetch(`${ONLINE_API}/questions/admin-list?course=${encodeURIComponent(course)}`).then(r => r.json());
+            const paperCache = {};   // "分类|年份" -> 线上 paperId
+            (onlinePapers || []).forEach(p => { paperCache[`${p.paper_category}|${p.paper_year}`] = p.id; });
+            const onlineKeys = new Set((onlineQs || []).map(qKey));   // 线上已有的题(去重键)
+
+            // 只发线上还没有的新题;已存在的跳过不动(不覆盖线上已有内容)
+            const toCreate = localQs.filter(q => !onlineKeys.has(qKey(q)));
+            const skipCount = localQs.length - toCreate.length;
+
+            if (!toCreate.length) {
+                setStatus(`没有新题可发 —— 本地 ${localQs.length} 道全都已在线上。`);
+                showToast(`线上已是最新:${localQs.length} 道全都已存在,无需发布。`);
+                btn.disabled = false; return;
+            }
+            if (!confirm(`发布课程「${course}」到【线上】:\n\n  • 新增 ${toCreate.length} 道\n  • 跳过 ${skipCount} 道(线上已有,不动)\n\n确认发布?`)) {
+                setStatus(''); btn.disabled = false; return;
+            }
+
+            async function ensureOnlinePaper(cat, year) {
+                const k = `${cat}|${year}`;
+                if (paperCache[k]) return paperCache[k];
+                const created = await adminFetch(`${ONLINE_API}/papers`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paper_category: cat, paper_year: year, course })
+                }).then(r => r.json());
+                paperCache[k] = created.id;
+                return created.id;
+            }
+
+            const seen = new Set();   // 本次内防重复(同键只发一次)
+            let created = 0, failed = 0, i = 0;
+            for (const q of toCreate) {
+                i++; setStatus(`发布中… ${i}/${toCreate.length}`);
+                const key = qKey(q);
+                if (seen.has(key)) continue;
+                seen.add(key);
+                try {
+                    const apid = await ensureOnlinePaper(q.testCategory, q.year);
+                    const payload = {
+                        paperId: apid,
+                        question_number: q.question_number,
+                        subquestion_number: q.subquestion_number || '',
+                        question_category: q.question_category,
+                        topic: q.topic || '',
+                        main_intro: q.main_intro || null,
+                        question_description: q.question_description,
+                        question_solution: q.question_solution,
+                        points: (q.points ?? null),
+                        rubric: (q.rubric ?? null),
+                        course
+                    };
+                    await adminFetch(`${ONLINE_API}/questions`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                    });
+                    created++;
+                } catch (e) { console.error('publish one failed', e); failed++; }
+            }
+            setStatus(`完成 ✅ 新增 ${created}, 跳过 ${skipCount}${failed ? `, 失败 ${failed}` : ''}`);
+            showToast(`已发布到线上:新增 ${created}, 跳过 ${skipCount}${failed ? `(${failed} 失败)` : ''}`, failed > 0);
+        } catch (e) {
+            console.error('Publish failed', e);
+            setStatus('发布失败——本地后端在跑吗?网络通吗?', true);
+        } finally {
+            btn.disabled = false;
+        }
+    });
 }
 
 // ============================================================
@@ -285,7 +441,7 @@ function initExamImport() {
         parseBtn.disabled = true;
         setStatus(`AI reading ${pending.length} new image${pending.length === 1 ? '' : 's'}… this can take a while.`);
         try {
-            const res = await adminFetch(`${API_BASE}/admin/parse-exam`, {
+            const res = await adminFetch(`${LOCAL_API}/admin/parse-exam`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ images: pending.map(x => x.b64) })
@@ -490,12 +646,28 @@ function initExamImport() {
                 </div>
                 <label>Main intro <span class="import-label-soft">(shared lead-in for this question's parts — optional)</span></label>
                 <textarea class="imp-intro" rows="2">${escapeHTMLAttr(cleanupImportedText(q.mainIntro))}</textarea>
+                <div class="imp-preview" data-for="intro"></div>
                 <label>Question</label>
                 <textarea class="imp-desc" rows="5">${escapeHTMLAttr(cleanupImportedText(q.questionDescription))}</textarea>
+                <div class="imp-preview" data-for="desc"></div>
                 <label>Solution</label>
                 <textarea class="imp-sol" rows="3">${escapeHTMLAttr(cleanupImportedText(q.questionSolution))}</textarea>
             `;
             card.querySelector('.import-remove').addEventListener('click', () => { card.remove(); updateCreateCount(); });
+
+            // 加粗预览:文本域里有 **词** 才显示一条"学生会看到这样"的预览,随打字实时更新。
+            [['.imp-intro', '[data-for="intro"]'], ['.imp-desc', '[data-for="desc"]']].forEach(([ta, pv]) => {
+                const area = card.querySelector(ta);
+                const prev = card.querySelector(pv);
+                const sync = () => {
+                    const hasBold = /\*\*[^*\n]+?\*\*/.test(area.value);
+                    prev.style.display = hasBold ? 'block' : 'none';
+                    if (hasBold) prev.innerHTML = boldPreviewHTML(area.value);
+                };
+                area.addEventListener('input', sync);
+                sync();
+            });
+
             resultsEl.appendChild(card);
         });
         updateCreateCount();
@@ -543,7 +715,7 @@ function initExamImport() {
             };
             createStatus.textContent = `Creating… ${ok + fail + 1}/${cards.length}`;
             try {
-                const r = await adminFetch(`${API_BASE}/questions`, {
+                const r = await adminFetch(`${LOCAL_API}/questions`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -560,11 +732,11 @@ function initExamImport() {
 
     // 找/建这门课这个 Test+Year 的试卷,返回 paperId(跟 Question Bank 那边同一套逻辑)
     async function importGetOrCreatePaperId(category, year, course) {
-        const res = await adminFetch(`${API_BASE}/papers?course=${encodeURIComponent(course)}`);
+        const res = await adminFetch(`${LOCAL_API}/papers?course=${encodeURIComponent(course)}`);
         const papers = await res.json();
         const existing = (papers || []).find(p => p.paper_category === category && p.paper_year === year);
         if (existing) return existing.id;
-        const created = await adminFetch(`${API_BASE}/papers`, {
+        const created = await adminFetch(`${LOCAL_API}/papers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ paper_category: category, paper_year: year, course })
@@ -584,7 +756,8 @@ function initQuestionBank() {
 
     const questionForm = document.getElementById('question-form');
     const formTitle = document.getElementById('form-title');
-    const formCard = formTitle.closest('.card');
+    const questionModal = document.getElementById('question-modal');
+    const formCard = questionModal.querySelector('.admin-modal-card');
     const questionIdInput = document.getElementById('question-id');
     const paperCategorySelect = document.getElementById('paper-category-select');
     const paperYearInput = document.getElementById('paper-year-input');
@@ -645,7 +818,7 @@ function initQuestionBank() {
             p.paper_category === category && p.paper_year === year && p.course === course);
         if (existingPaper) return existingPaper.id;
 
-        const response = await adminFetch(`${API_BASE}/papers`, {
+        const response = await adminFetch(`${envBase()}/papers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ paper_category: category, paper_year: year, course })
@@ -658,7 +831,7 @@ function initQuestionBank() {
     async function loadPapers() {
         try {
             // 只拉当前课程的卷子——试卷下拉、分类选项、年份都按课程作用域
-            const response = await adminFetch(`${API_BASE}/papers?course=${encodeURIComponent(getAdminCourse())}`);
+            const response = await adminFetch(`${envBase()}/papers?course=${encodeURIComponent(getAdminCourse())}`);
             allPapers = await response.json();
 
             allPapers.sort((a, b) => {
@@ -684,7 +857,7 @@ function initQuestionBank() {
     async function loadQuestions() {
         try {
             // 按当前课程过滤题库列表（admin-list 支持 course 参数）
-            const response = await adminFetch(`${API_BASE}/questions/admin-list?course=${encodeURIComponent(getAdminCourse())}`);
+            const response = await adminFetch(`${envBase()}/questions/admin-list?course=${encodeURIComponent(getAdminCourse())}`);
             allQuestions = await response.json();
             renderQuestionsTable();
         } catch (error) {
@@ -765,7 +938,7 @@ function initQuestionBank() {
                 const yKey = 'y:' + category + '|' + year;
                 return `
                     <details class="paper-folder paper-folder-year" data-key="${escapeHTMLAttr(yKey)}"${prevOpen.has(yKey) ? ' open' : ''}>
-                        <summary>${escapeHTML(String(yearLabel))} <span class="folder-count">(${items.length})</span><button type="button" class="folder-delete-btn" data-cat="${escapeHTMLAttr(category)}" data-year="${escapeHTMLAttr(String(year))}" title="Delete every question in this year">🗑 Delete all</button></summary>
+                        <summary>${escapeHTML(String(yearLabel))} <span class="folder-count">(${items.length})</span><button type="button" class="folder-add-btn" data-cat="${escapeHTMLAttr(category)}" data-year="${escapeHTMLAttr(String(year))}" title="Add a question to this test/year"><i class="fa-solid fa-plus"></i> Add</button><button type="button" class="folder-delete-btn" data-cat="${escapeHTMLAttr(category)}" data-year="${escapeHTMLAttr(String(year))}" title="Delete every question in this year">🗑 Delete all</button></summary>
                         <table>
                             <thead>
                                 <tr>
@@ -808,6 +981,14 @@ function initQuestionBank() {
                 deleteYear(btn.dataset.cat, btn.dataset.year, btn);
             });
         });
+        // 每个文件夹的"+ Add":直接开弹窗,并预填这个 Test/年份。
+        questionsFoldersEl.querySelectorAll('.folder-add-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openForAdd({ category: btn.dataset.cat, year: btn.dataset.year });
+            });
+        });
     }
 
     function escapeHTML(str) {
@@ -841,9 +1022,8 @@ function initQuestionBank() {
         cancelEditBtn.style.display = 'inline-block';
         formCard.classList.add('editing');
 
-        // 表单现在是独立的 "Add Question" 页——从 All Questions 点 Edit 时切过去,不然看不到表单
-        showAdminSection('questions');
-        formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // 弹窗浮在 All Questions 上,不再跳走
+        openQuestionModal();
     }
 
     function exitEditMode() {
@@ -856,7 +1036,37 @@ function initQuestionBank() {
         formCard.classList.remove('editing');
     }
 
-    cancelEditBtn.addEventListener('click', exitEditMode);
+    // ---------- Add/Edit 弹窗 ----------
+    function openQuestionModal() {
+        questionModal.hidden = false;
+        document.body.classList.add('admin-modal-open');
+        // 聚焦到第一个可编辑处,方便直接开录
+        setTimeout(() => { formCard.querySelector('input, select, textarea')?.focus(); }, 0);
+    }
+    function closeQuestionModal() {
+        questionModal.hidden = true;
+        document.body.classList.remove('admin-modal-open');
+        exitEditMode();
+    }
+    // 空白新增:清表单,可带上文件夹的 Test/年份预填
+    function openForAdd(prefill = {}) {
+        exitEditMode();
+        if (prefill.category) paperCategorySelect.value = prefill.category;
+        if (prefill.year) paperYearInput.value = prefill.year;
+        openQuestionModal();
+    }
+
+    // 关闭:✕ / 背景 / Esc
+    questionModal.querySelectorAll('[data-modal-close]').forEach(el =>
+        el.addEventListener('click', closeQuestionModal));
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !questionModal.hidden) closeQuestionModal();
+    });
+    // 顶部 "+ Add Question"(空白新增,始终可用)
+    const addQuestionBtn = document.getElementById('add-question-btn');
+    if (addQuestionBtn) addQuestionBtn.addEventListener('click', () => openForAdd());
+
+    cancelEditBtn.addEventListener('click', closeQuestionModal);
 
     const requiredFields = [
         paperCategorySelect,
@@ -927,14 +1137,14 @@ function initQuestionBank() {
 
         try {
             if (id) {
-                await adminFetch(`${API_BASE}/questions/${id}`, {
+                await adminFetch(`${envBase()}/questions/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
                 showToast(`Question #${id} updated.`);
             } else {
-                const response = await adminFetch(`${API_BASE}/questions`, {
+                const response = await adminFetch(`${envBase()}/questions`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -943,7 +1153,7 @@ function initQuestionBank() {
                 showToast(`Question #${created.id} added.`);
             }
 
-            exitEditMode();
+            closeQuestionModal();
             await loadQuestions();
         } catch (error) {
             console.error('Failed to save question:', error);
@@ -956,7 +1166,7 @@ function initQuestionBank() {
         if (!confirmed) return;
 
         try {
-            await adminFetch(`${API_BASE}/questions/${id}`, { method: 'DELETE' });
+            await adminFetch(`${envBase()}/questions/${id}`, { method: 'DELETE' });
             showToast(`Question #${id} deleted.`);
 
             if (questionIdInput.value === String(id)) {
@@ -982,7 +1192,7 @@ function initQuestionBank() {
         let ok = 0, fail = 0;
         for (const q of list) {
             try {
-                await adminFetch(`${API_BASE}/questions/${q.id}`, { method: 'DELETE' });
+                await adminFetch(`${envBase()}/questions/${q.id}`, { method: 'DELETE' });
                 ok++;
                 if (questionIdInput.value === String(q.id)) exitEditMode();
             } catch (e) { fail++; }
@@ -1035,7 +1245,7 @@ function initCribsheetLibrary() {
 
     async function loadNotes() {
         try {
-            const response = await adminFetch(`${API_BASE}/admin/cribsheet-notes`);
+            const response = await adminFetch(`${envBase()}/admin/cribsheet-notes`);
             allNotes = await response.json();
             renderNotesTable();
         } catch (error) {
@@ -1129,14 +1339,14 @@ function initCribsheetLibrary() {
 
         try {
             if (id) {
-                await adminFetch(`${API_BASE}/admin/cribsheet-notes/${id}`, {
+                await adminFetch(`${envBase()}/admin/cribsheet-notes/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
                 showToast(`Note #${id} updated.`);
             } else {
-                const response = await adminFetch(`${API_BASE}/admin/cribsheet-notes`, {
+                const response = await adminFetch(`${envBase()}/admin/cribsheet-notes`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -1158,7 +1368,7 @@ function initCribsheetLibrary() {
         if (!confirmed) return;
 
         try {
-            await adminFetch(`${API_BASE}/admin/cribsheet-notes/${id}`, { method: 'DELETE' });
+            await adminFetch(`${envBase()}/admin/cribsheet-notes/${id}`, { method: 'DELETE' });
             showToast(`Note #${id} deleted.`);
 
             if (noteIdInput.value === String(id)) {
@@ -1202,8 +1412,8 @@ function initUserManagement() {
     async function loadUsers(search = '') {
         try {
             const url = search
-                ? `${API_BASE}/admin/users?search=${encodeURIComponent(search)}`
-                : `${API_BASE}/admin/users`;
+                ? `${envBase()}/admin/users?search=${encodeURIComponent(search)}`
+                : `${envBase()}/admin/users`;
             const response = await adminFetch(url);
             allUsers = await response.json();
             renderUsersTable();
@@ -1256,7 +1466,7 @@ function initUserManagement() {
         if (newEmail === null) return;
 
         try {
-            await adminFetch(`${API_BASE}/admin/users/${id}`, {
+            await adminFetch(`${envBase()}/admin/users/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: newUsername.trim(), email: newEmail.trim() })
@@ -1275,7 +1485,7 @@ function initUserManagement() {
         if (!confirmed) return;
 
         try {
-            await adminFetch(`${API_BASE}/admin/users/${id}`, { method: 'DELETE' });
+            await adminFetch(`${envBase()}/admin/users/${id}`, { method: 'DELETE' });
             showToast(`User #${id} deleted.`);
             await loadUsers(userSearchInput.value.trim());
         } catch (error) {

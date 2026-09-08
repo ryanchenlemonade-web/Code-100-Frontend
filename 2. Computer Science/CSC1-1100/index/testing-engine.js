@@ -327,6 +327,57 @@ function splitIntroAndBody(text) {
     return { intro, body };
 }
 
+// 把散文里的 **加粗** 渲染成真正的粗体,让 AI 从卷面识别出的重点词对学生更醒目。
+// ⚠️ 只给【散文/说明】用,绝不用于代码块——Python 里 `2 ** 3` 的 ** 是幂运算,
+// 一旦被当成加粗标记就会毁掉代码显示。所以这个函数只出现在衬线体的题干部分。
+function setProseWithBold(el, text) {
+    const esc = String(text ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    el.innerHTML = esc.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+// 一道题的标准答案里有时塞了【两份完整答案】,中间用单独一行 "or" 隔开
+// (见书架题:程序A / 换行 or 换行 / 程序B)。把它们拆成数组,每份是一个可选答案。
+// ⚠️ 只在【整行就是 or】处拆,绝不碰代码里的 `a or b` 运算符;
+// 也不碰单行的 "5 or 5.0" 这种(那是同一行,不会被拆),短答案照旧。
+function splitSolutionAlternatives(text) {
+    const lines = String(text ?? '').replace(/\r\n/g, '\n').split('\n');
+    const parts = [];
+    let cur = [];
+    for (const line of lines) {
+        if (line.trim().toLowerCase() === 'or') { parts.push(cur.join('\n')); cur = []; }
+        else cur.push(line);
+    }
+    parts.push(cur.join('\n'));
+    const cleaned = parts.map(p => p.replace(/^\n+/, '').replace(/\s+$/, '')).filter(p => p.trim() !== '');
+    return cleaned.length ? cleaned : [String(text ?? '')];
+}
+
+// 把标准答案填进一个 <pre>:先显示第一份。若有多份,额外返回一排
+// "Answer 1 / Answer 2 …" 切换键(点了就换 pre 里显示哪份),只看一份、更清爽。
+// 仍是同一个 <pre>,外面的滚动/展开逻辑都不用动;只有一份时返回 null(不加切换键)。
+function setupSolutionPre(pre, text) {
+    const alts = splitSolutionAlternatives(text);
+    pre.textContent = alts[0] ?? '';
+    if (alts.length <= 1) return null;
+
+    const tabs = document.createElement('div');
+    tabs.className = 'answer-alt-tabs';
+    tabs.setAttribute('role', 'tablist');
+    alts.forEach((alt, i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'answer-alt-tab' + (i === 0 ? ' is-active' : '');
+        btn.textContent = `Answer ${i + 1}`;
+        btn.addEventListener('click', () => {
+            pre.textContent = alt;
+            tabs.querySelectorAll('.answer-alt-tab').forEach((b, j) =>
+                b.classList.toggle('is-active', j === i));
+        });
+        tabs.appendChild(btn);
+    });
+    return tabs;
+}
+
 function buildQuestionBlock(question, options = {}) {
     const wrapper = document.createElement('div');
     wrapper.className = 'question-block';
@@ -470,7 +521,7 @@ function buildQuestionBlock(question, options = {}) {
     if (split) {
         const introEl = document.createElement('div');
         introEl.className = 'question-intro-prose';
-        introEl.textContent = split.intro;
+        setProseWithBold(introEl, split.intro);   // 散文介绍:渲染加粗
         wrapper.appendChild(introEl);
 
         const bodyPre = document.createElement('pre');
@@ -482,14 +533,20 @@ function buildQuestionBlock(question, options = {}) {
         const questionPre = document.createElement('pre');
         questionPre.className = 'question-code';
         // 整段就是一段流水文字（不是代码）→ 衬线体、去掉代码框感，读着像卷面说明
-        if (looksLikeProseQuestion(question.question_description)) {
+        const wholeIsProse = looksLikeProseQuestion(question.question_description);
+        if (wholeIsProse) {
             questionPre.classList.add('question-prose');
         }
         // 只在「扫列表找题」的场景（Practice / Marked Questions）允许折叠
         if (options.collapseLongCode) {
             questionPre.classList.add('question-code-collapsible');
         }
-        questionPre.textContent = question.question_description;
+        // 散文才渲染 **加粗**;代码块保持原样(避免 Python 的 ** 幂运算被误伤)
+        if (wholeIsProse) {
+            setProseWithBold(questionPre, question.question_description);
+        } else {
+            questionPre.textContent = question.question_description;
+        }
         wrapper.appendChild(questionPre);
     }
 
@@ -708,16 +765,19 @@ function loadPracticeQuestionsByCategory(category, questionCategory) {
 
                         const solutionPre = document.createElement('pre');
                         solutionPre.className = 'answer-code';
-                        solutionPre.textContent = question.question_solution;
+                        const altTabs = setupSolutionPre(solutionPre, question.question_solution);   // 多份→切换键
+                        if (altTabs) altTabs.style.display = 'none';   // 答案没展开前先藏着
 
                         toggleBtn.addEventListener('click', () => {
                             const isHidden = !solutionPre.classList.contains('show');
                             solutionPre.classList.toggle('show', isHidden);
+                            if (altTabs) altTabs.style.display = isHidden ? 'flex' : 'none';
                             toggleBtn.textContent = isHidden ? 'Hide Solution' : 'Show Solution';
                         });
 
                         wrapper.appendChild(toggleBtn);
                         wrapper.appendChild(solutionPre);
+                        if (altTabs) wrapper.appendChild(altTabs);   // 切换键放答案下面
                     }
 
                     questionsWrap.appendChild(wrapper);
@@ -1703,7 +1763,7 @@ function loadTestingQuestions(paperId, paperTitle) {
                     if (introText) {
                         const introEl = document.createElement('div');
                         introEl.className = 'exam-main-intro-text';
-                        introEl.textContent = introText;
+                        setProseWithBold(introEl, introText);   // 大题说明:渲染加粗
                         head.appendChild(introEl);
                     }
                     section.appendChild(head);
@@ -2156,7 +2216,7 @@ function revealSolutions(paperId) {
                     // 交卷时再加 .show 显示。现在是交卷后才创建的，
                     // 没有"先藏后显"这一步了
                     solutionPre.className = 'answer-code testing-answer show';
-                    solutionPre.textContent = question.question_solution;
+                    const altTabs = setupSolutionPre(solutionPre, question.question_solution);   // 多份→切换键
 
                     // tabindex=0 让这块代码可以被点中（也能用 Tab 键走到）。
                     // 【它是"点进来才能滚"的关键】：CSS 里滚动条是挂在
@@ -2176,6 +2236,7 @@ function revealSolutions(paperId) {
                         }
                     });
 
+                    if (altTabs) solutionBox.appendChild(altTabs);   // 切换键放答案下面
                     compare.appendChild(solutionBox);
                 }
 
