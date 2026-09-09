@@ -723,11 +723,137 @@ function buildRatingWidget(question) {
     return wrap;
 }
 
+// ============================================================
+// 专注做题模式（Focus mode）
+// ============================================================
+// 双击 Practice 题目区 → 一次只显示一道题(其余隐藏)，配 ‹ Prev / Next › 逐题看，
+// 免得一屏塞太多题眼花。再双击 / Esc / ✕ 退出。只作用于 Practice 列表，不碰考试页。
+function initPracticeFocusMode() {
+    const wrap = document.getElementById('practice-questions');
+    if (!wrap || wrap.dataset.focusWired) return;
+    wrap.dataset.focusWired = '1';
+
+    // 控制条(列表的兄弟节点，放在列表上方；列表 innerHTML 清空重填时它不受影响)
+    const bar = document.createElement('div');
+    bar.className = 'practice-focus-bar';
+    bar.innerHTML = `
+        <button type="button" class="pf-exit" title="Exit focus (Esc)">✕ Exit</button>
+        <div class="pf-mid">
+            <button type="button" class="pf-prev" title="Previous (←)">‹ Prev</button>
+            <span class="pf-counter">1 / 1</span>
+            <button type="button" class="pf-next" title="Next (→)">Next ›</button>
+        </div>
+        <span class="pf-hint-inline">Drag the line below to move ←→</span>`;
+    wrap.parentNode.insertBefore(bar, wrap);
+
+    // 提示条(非专注时显示，点它也能进；专注时隐藏)
+    const hint = document.createElement('button');
+    hint.type = 'button';
+    hint.className = 'practice-focus-hint';
+    hint.innerHTML = `<i class="fa-solid fa-expand"></i> Focus mode <span class="pf-hint-sub">(or double-click anywhere)</span>`;
+    wrap.parentNode.insertBefore(hint, wrap);
+
+    // 题目移动轴:题目下面那条分隔线做成可拖动的滑轨,拖它把【当前这道题左右平移】
+    // (不是换题——换题用上面的 ‹ Prev / Next ›)。滑到哪题目就停在哪。
+    const POS_KEY = 'code100_focus_pos';
+    const axis = document.createElement('div');
+    axis.className = 'pf-axis';
+    axis.innerHTML = `<input type="range" class="pf-axis-slider" min="0" max="100" step="1" value="0" aria-label="Slide the question left/right">`;
+    wrap.parentNode.insertBefore(axis, wrap.nextSibling);
+    const slider = axis.querySelector('.pf-axis-slider');
+    let posPct = 0;
+    try { const v = parseInt(localStorage.getItem(POS_KEY), 10); if (!isNaN(v)) posPct = Math.max(0, Math.min(100, v)); } catch (e) { /* ignore */ }
+    slider.value = posPct;
+
+    // 量当前题最宽内容的宽度,决定"能往右挪多少"(挪到最右也不会把内容顶出去)
+    function measureContentWidth(cur) {
+        if (!cur) return 560;
+        let maxW = 0;
+        cur.querySelectorAll('.question-intro-prose, .question-code.question-prose').forEach(el => {
+            maxW = Math.max(maxW, el.getBoundingClientRect().width);
+        });
+        cur.querySelectorAll('pre.question-code:not(.question-prose)').forEach(pre => {
+            const clone = pre.cloneNode(true);
+            clone.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;width:max-content;max-width:none;margin:0;padding:12px 16px;';
+            pre.parentNode.appendChild(clone);
+            maxW = Math.max(maxW, clone.getBoundingClientRect().width);
+            clone.remove();
+        });
+        return maxW || 560;
+    }
+    // 把 0–100 的滑块值换成这道题的实际平移 px:0=贴左(原样),100=贴右,50=居中
+    function applyPosition() {
+        const cur = blocks()[idx];
+        if (!cur) return;
+        const maxShift = Math.max(0, wrap.clientWidth - measureContentWidth(cur));
+        const shift = Math.round(maxShift * posPct / 100);
+        wrap.style.setProperty('--pf-shift', shift + 'px');
+    }
+
+    let active = false;
+    let idx = 0;
+    const blocks = () => [...wrap.querySelectorAll(':scope > .question-block')];
+
+    function render() {
+        const bs = blocks();
+        if (!bs.length) { exit(); return; }
+        idx = Math.max(0, Math.min(idx, bs.length - 1));
+        bs.forEach((b, i) => b.classList.toggle('is-focus-current', i === idx));
+        bar.querySelector('.pf-counter').textContent = `${idx + 1} / ${bs.length}`;
+        bar.querySelector('.pf-prev').disabled = idx === 0;
+        bar.querySelector('.pf-next').disabled = idx === bs.length - 1;
+        applyPosition();   // 新题按当前滑块位置摆好(左右平移量按这道题重算)
+        // 换题不滚动:界面保持不动,哪怕长题被吸顶条挡住一点也没关系(不然一直晃)
+    }
+    function enter() {
+        if (active || !blocks().length) return;
+        active = true;
+        document.body.classList.add('practice-focus-mode');
+        idx = 0;
+        render();
+    }
+    function exit() {
+        if (!active) return;
+        active = false;
+        document.body.classList.remove('practice-focus-mode');
+        blocks().forEach(b => b.classList.remove('is-focus-current'));
+    }
+    function go(delta) { idx += delta; render(); }
+
+    // 双击切换。忽略在按钮/输入/可选中的代码上的双击(那是选词/交互，不该误触发)
+    wrap.addEventListener('dblclick', (e) => {
+        if (e.target.closest('button, a, input, textarea, select, .answer-code, .question-code, .answer-alt-tabs, .rating-stars')) return;
+        active ? exit() : enter();
+    });
+    hint.addEventListener('click', enter);
+    bar.querySelector('.pf-exit').addEventListener('click', exit);
+    bar.querySelector('.pf-prev').addEventListener('click', () => go(-1));
+    bar.querySelector('.pf-next').addEventListener('click', () => go(1));
+    // 拖动移动轴 → 把当前题左右平移(不换题)。记住位置,换题也沿用。
+    slider.addEventListener('input', () => {
+        posPct = Number(slider.value);
+        applyPosition();
+        try { localStorage.setItem(POS_KEY, String(posPct)); } catch (e) { /* ignore */ }
+    });
+    window.addEventListener('resize', applyPosition);
+
+    document.addEventListener('keydown', (e) => {
+        if (!active) return;
+        if (e.key === 'Escape') exit();
+        else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+    });
+
+    // 列表重渲染(切 Test / 换题型) → 退出专注，避免停在已消失的题上
+    new MutationObserver(() => { if (active) exit(); }).observe(wrap, { childList: true });
+}
+
 // 获取 Practice 模式题目（新版）：按 Test 分类查询，跨所有年份混合展示，
 // 可选按题型（questionCategory）筛选，每道题上标注对应的年份
 function loadPracticeQuestionsByCategory(category, questionCategory) {
     const questionsWrap = document.getElementById('practice-questions');
     if (!questionsWrap) return;
+    initPracticeFocusMode();   // 首次进来时挂好专注模式(内部有去重)
 
     showQuestionsLoading(questionsWrap);
 
