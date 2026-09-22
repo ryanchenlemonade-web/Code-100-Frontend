@@ -463,7 +463,7 @@ window.addEventListener('load', () => layoutSwitcher());
 
 
 // footer
-fetch('../../../0.%20Footer/footer.html')
+fetch('../../../0.%20Footer/footer.html?v=20260922a')
     .then(res => res.text())
     .then(html => {
         const footerEl = document.getElementById('footer-container');

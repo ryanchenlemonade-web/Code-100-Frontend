@@ -167,7 +167,7 @@ function buildListRow(entry, myUsername) {
 })();
 
 // footer
-fetch('../0.%20Footer/footer.html')
+fetch('../0.%20Footer/footer.html?v=20260922a')
     .then(res => res.text())
     .then(html => {
         document.getElementById('footer-container').innerHTML = html;
