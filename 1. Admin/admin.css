@@ -779,6 +779,23 @@ body.admin-modal-open { overflow: hidden; }
     cursor: pointer;
 }
 .folder-add-btn:hover { background: hsl(212, 100%, 92%); }
+
+/* 文件夹"Rename":改这一格的年份/学期 —— 中性/琥珀色,区别于蓝色 Add、红色 Delete */
+.folder-rename-btn {
+    margin-left: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: hsl(32, 65%, 38%);
+    background: hsl(38, 90%, 95%);
+    border: 1px solid hsl(38, 65%, 80%);
+    border-radius: 6px;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+.folder-rename-btn:hover { background: hsl(38, 90%, 90%); }
+
+/* 小尺寸弹窗(改名用) */
+.admin-modal-card-sm { max-width: 440px; }
 .imp-preview::before {
     content: "Preview";
     display: block;

@@ -433,7 +433,9 @@ function buildQuestionBlock(question, options = {}) {
         const yearTag = document.createElement('span');
         yearTag.className = 'question-year-tag';
         const originalNumber = `${question.question_number}${question.subquestion_number ?? ''}`;
-        yearTag.textContent = `${question.paper_year} (Q${originalNumber})`;
+        // 有学期就显示 "Spring 2025 (Q3a)",没有就只显示年份
+        const yearLabel = question.paper_semester ? `${question.paper_semester} ${question.paper_year}` : `${question.paper_year}`;
+        yearTag.textContent = `${yearLabel} (Q${originalNumber})`;
         labelRow.appendChild(yearTag);
     }
 

@@ -265,7 +265,7 @@ function initPublishToOnline() {
     const statusEl = document.getElementById('publish-status');
     const setStatus = (m, err = false) => { if (statusEl) { statusEl.textContent = m || ''; statusEl.classList.toggle('is-error', !!err); } };
 
-    const qKey = q => `${q.testCategory}|${q.year}|${q.question_number}|${q.subquestion_number || ''}`;
+    const qKey = q => `${q.testCategory}|${q.year}|${q.semester || ''}|${q.question_number}|${q.subquestion_number || ''}`;
 
     btn.addEventListener('click', async () => {
         const course = getAdminCourse();
@@ -277,8 +277,8 @@ function initPublishToOnline() {
 
             const onlinePapers = await adminFetch(`${ONLINE_API}/papers?course=${encodeURIComponent(course)}`).then(r => r.json());
             const onlineQs = await adminFetch(`${ONLINE_API}/questions/admin-list?course=${encodeURIComponent(course)}`).then(r => r.json());
-            const paperCache = {};   // "分类|年份" -> 线上 paperId
-            (onlinePapers || []).forEach(p => { paperCache[`${p.paper_category}|${p.paper_year}`] = p.id; });
+            const paperCache = {};   // "分类|年份|学期" -> 线上 paperId
+            (onlinePapers || []).forEach(p => { paperCache[`${p.paper_category}|${p.paper_year}|${p.paper_semester || ''}`] = p.id; });
             const onlineKeys = new Set((onlineQs || []).map(qKey));   // 线上已有的题(去重键)
 
             // 只发线上还没有的新题;已存在的跳过不动(不覆盖线上已有内容)
@@ -294,12 +294,13 @@ function initPublishToOnline() {
                 setStatus(''); btn.disabled = false; return;
             }
 
-            async function ensureOnlinePaper(cat, year) {
-                const k = `${cat}|${year}`;
+            async function ensureOnlinePaper(cat, year, semester) {
+                const sem = semester || '';
+                const k = `${cat}|${year}|${sem}`;
                 if (paperCache[k]) return paperCache[k];
                 const created = await adminFetch(`${ONLINE_API}/papers`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ paper_category: cat, paper_year: year, course })
+                    body: JSON.stringify({ paper_category: cat, paper_year: year, paper_semester: sem, course })
                 }).then(r => r.json());
                 paperCache[k] = created.id;
                 return created.id;
@@ -313,7 +314,7 @@ function initPublishToOnline() {
                 if (seen.has(key)) continue;
                 seen.add(key);
                 try {
-                    const apid = await ensureOnlinePaper(q.testCategory, q.year);
+                    const apid = await ensureOnlinePaper(q.testCategory, q.year, q.semester);
                     const payload = {
                         paperId: apid,
                         question_number: q.question_number,
@@ -559,6 +560,13 @@ function initExamImport() {
                 <label>Year
                     <input type="number" id="import-bar-year" placeholder="e.g. 2024" min="1990" max="2100">
                 </label>
+                <label>Semester
+                    <select id="import-bar-semester">
+                        <option value="">—</option>
+                        <option value="Spring">Spring</option>
+                        <option value="Fall">Fall</option>
+                    </select>
+                </label>
             </div>
             <div class="import-createbar-bulk">
                 <select id="import-setall-type" title="Set every question's type at once">${setAllTypeOpts}</select>
@@ -678,6 +686,7 @@ function initExamImport() {
         const createStatus = document.getElementById('import-create-status');
         const category = document.getElementById('import-bar-test').value;
         const year = Number(document.getElementById('import-bar-year').value);
+        const semester = document.getElementById('import-bar-semester').value;   // ""/Spring/Fall
         if (!year || year < 1990) { createStatus.textContent = 'Set a valid Year first.'; createStatus.classList.add('is-error'); return; }
 
         // 只创建【还没创建过】的卡片,避免增量导入时重复建之前那批
@@ -690,7 +699,7 @@ function initExamImport() {
 
         let paperId;
         try {
-            paperId = await importGetOrCreatePaperId(category, year, course);
+            paperId = await importGetOrCreatePaperId(category, year, semester, course);
         } catch (e) {
             console.error(e);
             createStatus.textContent = 'Failed to create/find the paper.';
@@ -731,15 +740,17 @@ function initExamImport() {
     }
 
     // 找/建这门课这个 Test+Year 的试卷,返回 paperId(跟 Question Bank 那边同一套逻辑)
-    async function importGetOrCreatePaperId(category, year, course) {
+    async function importGetOrCreatePaperId(category, year, semester, course) {
+        const sem = semester || '';
         const res = await adminFetch(`${LOCAL_API}/papers?course=${encodeURIComponent(course)}`);
         const papers = await res.json();
-        const existing = (papers || []).find(p => p.paper_category === category && p.paper_year === year);
+        const existing = (papers || []).find(p =>
+            p.paper_category === category && p.paper_year === year && (p.paper_semester || '') === sem);
         if (existing) return existing.id;
         const created = await adminFetch(`${LOCAL_API}/papers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paper_category: category, paper_year: year, course })
+            body: JSON.stringify({ paper_category: category, paper_year: year, paper_semester: sem, course })
         }).then(r => r.json());
         return created.id;
     }
@@ -761,6 +772,7 @@ function initQuestionBank() {
     const questionIdInput = document.getElementById('question-id');
     const paperCategorySelect = document.getElementById('paper-category-select');
     const paperYearInput = document.getElementById('paper-year-input');
+    const paperSemesterSelect = document.getElementById('paper-semester-select');
     const questionNumberInput = document.getElementById('question-number-input');
     const subquestionNumberInput = document.getElementById('subquestion-number-input');
     const questionCategorySelect = document.getElementById('question-category-select');
@@ -793,7 +805,8 @@ function initQuestionBank() {
     }
 
     function formatPaperLabel(paper) {
-        return `${paper.paper_category} (${paper.paper_year})`;
+        const yr = paper.paper_semester ? `${paper.paper_semester} ${paper.paper_year}` : `${paper.paper_year}`;
+        return `${paper.paper_category} (${yr})`;
     }
 
     const KNOWN_CATEGORIES = ['Test 1', 'Test 2', 'Test 3', 'Final Test'];
@@ -810,18 +823,20 @@ function initQuestionBank() {
             .join('');
     }
 
-    async function getOrCreatePaperId(category, year) {
+    async function getOrCreatePaperId(category, year, semester) {
         // allPapers 已按当前课程过滤，所以这里的 find 天然限定在本课程内。
-        // 仍显式带上 course：同一个 (Test, 年份) 在不同课程下是不同的卷子
+        // 仍显式带上 course：同一个 (Test, 年份, 学期) 在不同课程下是不同的卷子
         const course = getAdminCourse();
+        const sem = semester || '';
         const existingPaper = allPapers.find(p =>
-            p.paper_category === category && p.paper_year === year && p.course === course);
+            p.paper_category === category && p.paper_year === year
+            && (p.paper_semester || '') === sem && p.course === course);
         if (existingPaper) return existingPaper.id;
 
         const response = await adminFetch(`${envBase()}/papers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paper_category: category, paper_year: year, course })
+            body: JSON.stringify({ paper_category: category, paper_year: year, paper_semester: sem, course })
         });
         const createdPaper = await response.json();
         allPapers.push(createdPaper);
@@ -887,16 +902,22 @@ function initQuestionBank() {
             return;
         }
 
-        // 两级分组：外层每个 Test 分类一个文件夹，内层再按年份分。
-        // byCategory: { "Test 1": { 2026: [q...], 2020: [q...] }, ... }
+        // 两级分组：外层每个 Test 分类一个文件夹，内层再按【年份+学期】分。
+        // Spring 2025 / Fall 2025 / 2025(不分学期) 是三个独立的内层文件夹。
+        // byCategory: { "Test 1": { "2025|Spring": {year,semester,items:[...]}, ... }, ... }
         const byCategory = {};
         filtered.forEach(q => {
             const category = q.testCategory || 'Unknown Paper';
             const year = q.year ?? '';
+            const semester = q.semester || '';
+            const key = `${year}|${semester}`;
             if (!byCategory[category]) byCategory[category] = {};
-            if (!byCategory[category][year]) byCategory[category][year] = [];
-            byCategory[category][year].push(q);
+            if (!byCategory[category][key]) byCategory[category][key] = { year, semester, items: [] };
+            byCategory[category][key].items.push(q);
         });
+        const SEM_RANK = { '': 0, 'Spring': 1, 'Fall': 2 };
+        const fmtYearSem = (year, semester) =>
+            year === '' ? 'No year' : (semester ? `${semester} ${year}` : String(year));
 
         // 外层按 Test 分类排（Test 1 < 2 < 3 < Final）
         const sortedCategories = Object.keys(byCategory).sort(
@@ -927,18 +948,23 @@ function initQuestionBank() {
 
         questionsFoldersEl.innerHTML = sortedCategories.map(category => {
             const yearsMap = byCategory[category];
-            const totalInCategory = Object.values(yearsMap).reduce((n, arr) => n + arr.length, 0);
+            const groups = Object.values(yearsMap);
+            const totalInCategory = groups.reduce((n, g) => n + g.items.length, 0);
 
-            // 内层年份，新的在前
-            const sortedYears = Object.keys(yearsMap).sort((a, b) => (Number(b) || 0) - (Number(a) || 0));
+            // 内层：年份新的在前;同年内 不分学期 < Spring < Fall
+            const sortedGroups = groups.sort((a, b) =>
+                ((Number(b.year) || 0) - (Number(a.year) || 0))
+                || ((SEM_RANK[a.semester] ?? 0) - (SEM_RANK[b.semester] ?? 0)));
 
-            const yearFoldersHTML = sortedYears.map(year => {
-                const items = yearsMap[year].slice().sort((a, b) => (a.question_number ?? 0) - (b.question_number ?? 0));
-                const yearLabel = year === '' ? 'No year' : year;
-                const yKey = 'y:' + category + '|' + year;
+            const yearFoldersHTML = sortedGroups.map(g => {
+                const year = g.year, semester = g.semester;
+                const items = g.items.slice().sort((a, b) => (a.question_number ?? 0) - (b.question_number ?? 0));
+                const yearLabel = fmtYearSem(year, semester);
+                const yKey = 'y:' + category + '|' + year + '|' + semester;
+                const paperIds = [...new Set(items.map(x => x.paperId))].join(',');   // 这个文件夹对应的卷 id(可能不止一门课)
                 return `
                     <details class="paper-folder paper-folder-year" data-key="${escapeHTMLAttr(yKey)}"${prevOpen.has(yKey) ? ' open' : ''}>
-                        <summary>${escapeHTML(String(yearLabel))} <span class="folder-count">(${items.length})</span><button type="button" class="folder-add-btn" data-cat="${escapeHTMLAttr(category)}" data-year="${escapeHTMLAttr(String(year))}" title="Add a question to this test/year"><i class="fa-solid fa-plus"></i> Add</button><button type="button" class="folder-delete-btn" data-cat="${escapeHTMLAttr(category)}" data-year="${escapeHTMLAttr(String(year))}" title="Delete every question in this year">🗑 Delete all</button></summary>
+                        <summary>${escapeHTML(String(yearLabel))} <span class="folder-count">(${items.length})</span><button type="button" class="folder-add-btn" data-cat="${escapeHTMLAttr(category)}" data-year="${escapeHTMLAttr(String(year))}" data-sem="${escapeHTMLAttr(semester)}" title="Add a question here"><i class="fa-solid fa-plus"></i> Add</button><button type="button" class="folder-rename-btn" data-cat="${escapeHTMLAttr(category)}" data-year="${escapeHTMLAttr(String(year))}" data-sem="${escapeHTMLAttr(semester)}" data-papers="${escapeHTMLAttr(paperIds)}" title="Rename this year/semester"><i class="fa-solid fa-pen"></i> Rename</button><button type="button" class="folder-delete-btn" data-cat="${escapeHTMLAttr(category)}" data-year="${escapeHTMLAttr(String(year))}" data-sem="${escapeHTMLAttr(semester)}" title="Delete every question here">🗑 Delete all</button></summary>
                         <table>
                             <thead>
                                 <tr>
@@ -978,15 +1004,24 @@ function initQuestionBank() {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                deleteYear(btn.dataset.cat, btn.dataset.year, btn);
+                deleteYear(btn.dataset.cat, btn.dataset.year, btn.dataset.sem, btn);
             });
         });
-        // 每个文件夹的"+ Add":直接开弹窗,并预填这个 Test/年份。
+        // 每个文件夹的"+ Add":直接开弹窗,并预填这个 Test/年份/学期。
         questionsFoldersEl.querySelectorAll('.folder-add-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                openForAdd({ category: btn.dataset.cat, year: btn.dataset.year });
+                openForAdd({ category: btn.dataset.cat, year: btn.dataset.year, semester: btn.dataset.sem });
+            });
+        });
+        // 每个文件夹的"Rename":改这一格的年份/学期(改所有对应卷)
+        questionsFoldersEl.querySelectorAll('.folder-rename-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const paperIds = (btn.dataset.papers || '').split(',').filter(Boolean).map(Number);
+                openRename({ category: btn.dataset.cat, year: btn.dataset.year, semester: btn.dataset.sem, paperIds });
             });
         });
     }
@@ -1005,6 +1040,7 @@ function initQuestionBank() {
 
         if (question.testCategory) paperCategorySelect.value = question.testCategory;
         if (question.year) paperYearInput.value = question.year;
+        paperSemesterSelect.value = question.semester || '';
 
         questionNumberInput.value = question.question_number ?? '';
         subquestionNumberInput.value = question.subquestion_number ?? '';
@@ -1048,11 +1084,12 @@ function initQuestionBank() {
         document.body.classList.remove('admin-modal-open');
         exitEditMode();
     }
-    // 空白新增:清表单,可带上文件夹的 Test/年份预填
+    // 空白新增:清表单,可带上文件夹的 Test/年份/学期预填
     function openForAdd(prefill = {}) {
         exitEditMode();
         if (prefill.category) paperCategorySelect.value = prefill.category;
         if (prefill.year) paperYearInput.value = prefill.year;
+        paperSemesterSelect.value = prefill.semester || '';
         openQuestionModal();
     }
 
@@ -1065,6 +1102,81 @@ function initQuestionBank() {
     // 顶部 "+ Add Question"(空白新增,始终可用)
     const addQuestionBtn = document.getElementById('add-question-btn');
     if (addQuestionBtn) addQuestionBtn.addEventListener('click', () => openForAdd());
+
+    // ---------- 改名弹窗(改某个文件夹的年份/学期) ----------
+    const renameModal = document.createElement('div');
+    renameModal.className = 'admin-modal';
+    renameModal.hidden = true;
+    renameModal.innerHTML = `
+        <div class="admin-modal-backdrop" data-rename-close></div>
+        <div class="admin-modal-card admin-modal-card-sm">
+            <button type="button" class="admin-modal-close" data-rename-close title="Close">✕</button>
+            <h2>Rename year / semester</h2>
+            <p class="rename-sub" style="color:var(--admin-weak);margin:0 0 14px;"></p>
+            <div class="form-row form-row-inline">
+                <div>
+                    <label for="rename-year-input">Year</label>
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" id="rename-year-input">
+                </div>
+                <div>
+                    <label for="rename-sem-select">Semester</label>
+                    <select id="rename-sem-select">
+                        <option value="">—</option>
+                        <option value="Spring">Spring</option>
+                        <option value="Fall">Fall</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="rename-save-btn">Save</button>
+                <button type="button" data-rename-close>Cancel</button>
+            </div>
+        </div>`;
+    document.body.appendChild(renameModal);
+    const renameYearInput = renameModal.querySelector('#rename-year-input');
+    const renameSemSelect = renameModal.querySelector('#rename-sem-select');
+    let renameTargets = { category: '', paperIds: [] };
+
+    function openRename({ category, year, semester, paperIds }) {
+        renameTargets = { category, paperIds: paperIds || [] };
+        renameModal.querySelector('.rename-sub').textContent =
+            `${category} · ${semester ? semester + ' ' + year : year}`;
+        renameYearInput.value = year;
+        renameSemSelect.value = semester || '';
+        renameModal.hidden = false;
+        document.body.classList.add('admin-modal-open');
+        setTimeout(() => renameYearInput.focus(), 0);
+    }
+    function closeRename() {
+        renameModal.hidden = true;
+        document.body.classList.remove('admin-modal-open');
+    }
+    renameModal.querySelectorAll('[data-rename-close]').forEach(el => el.addEventListener('click', closeRename));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !renameModal.hidden) closeRename(); });
+
+    renameModal.querySelector('#rename-save-btn').addEventListener('click', async () => {
+        const newYear = Number(renameYearInput.value);
+        const newSem = renameSemSelect.value;
+        if (!newYear || newYear < 1990) { showToast('Enter a valid year.', true); return; }
+        if (!renameTargets.paperIds.length) { closeRename(); return; }
+        const saveBtn = renameModal.querySelector('#rename-save-btn');
+        saveBtn.disabled = true;
+        let ok = 0, fail = 0;
+        for (const pid of renameTargets.paperIds) {
+            try {
+                await adminFetch(`${envBase()}/papers/${pid}`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paper_category: renameTargets.category, paper_year: newYear, paper_semester: newSem })
+                });
+                ok++;
+            } catch (e) { console.error('rename failed', e); fail++; }
+        }
+        saveBtn.disabled = false;
+        closeRename();
+        showToast(`Renamed ${ok} paper${ok === 1 ? '' : 's'}${fail ? `, ${fail} failed` : ''}.`, fail > 0);
+        await loadPapers();
+        await loadQuestions();
+    });
 
     cancelEditBtn.addEventListener('click', closeQuestionModal);
 
@@ -1104,12 +1216,13 @@ function initQuestionBank() {
 
         const category = paperCategorySelect.value;
         const year = Number(paperYearInput.value);
+        const semester = paperSemesterSelect.value;   // ""/Spring/Fall
 
         const id = questionIdInput.value;
         let paperId;
 
         try {
-            paperId = await getOrCreatePaperId(category, year);
+            paperId = await getOrCreatePaperId(category, year, semester);
         } catch (error) {
             console.error('Failed to resolve paper:', error);
             showToast('Failed to create/find the paper for that Test and Year.', true);
@@ -1180,12 +1293,16 @@ function initQuestionBank() {
         }
     }
 
-    // 删掉某一个 Test·年份文件夹里(当前筛选下)的全部题目。危险操作,强确认。
-    async function deleteYear(cat, yearStr, btn) {
+    // 删掉某一个 Test·年份·学期文件夹里(当前筛选下)的全部题目。危险操作,强确认。
+    async function deleteYear(cat, yearStr, semStr, btn) {
+        const sem = semStr || '';
         const list = currentFiltered().filter(q =>
-            (q.testCategory || 'Unknown Paper') === cat && String(q.year ?? '') === yearStr);
+            (q.testCategory || 'Unknown Paper') === cat
+            && String(q.year ?? '') === yearStr
+            && (q.semester || '') === sem);
         if (!list.length) return;
-        const label = `${cat} · ${yearStr === '' ? 'No year' : yearStr}`;
+        const yearLabel = yearStr === '' ? 'No year' : (sem ? `${sem} ${yearStr}` : yearStr);
+        const label = `${cat} · ${yearLabel}`;
         if (!confirm(`Delete all ${list.length} question${list.length === 1 ? '' : 's'} in ${label}? This cannot be undone.`)) return;
 
         if (btn) btn.disabled = true;

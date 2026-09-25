@@ -154,8 +154,14 @@ async function loadContent(id) {
         return;
     }
 
-    // 按年份从新到旧排序，默认显示最新的版本
-    const sortedPapers = [...papers].sort((a, b) => b.paper_year - a.paper_year);
+    // 年份 + 学期的显示标签:有学期就 "Spring 2025",没有就 "2025"
+    const SEM_RANK = { '': 0, 'Spring': 1, 'Fall': 2 };
+    const paperLabel = p => p.paper_semester ? `${p.paper_semester} ${p.paper_year}` : `${p.paper_year}`;
+
+    // 按年份从新到旧排序;同年内 不分学期 < Spring < Fall。默认显示最新的版本
+    const sortedPapers = [...papers].sort((a, b) =>
+        (b.paper_year - a.paper_year)
+        || ((SEM_RANK[a.paper_semester || ''] ?? 0) - (SEM_RANK[b.paper_semester || ''] ?? 0)));
     const defaultPaper = sortedPapers[0];
 
     contentContainer.innerHTML = await buildTestingPageSkeleton();
@@ -167,14 +173,14 @@ async function loadContent(id) {
 
     if (sortedPapers.length > 1) {
         versionSelect.innerHTML = sortedPapers
-            .map(p => `<option value="${p.id}">${p.paper_year}</option>`)
+            .map(p => `<option value="${p.id}">${paperLabel(p)}</option>`)
             .join('');
         versionWrap.classList.add('show');
 
         versionSelect.addEventListener('change', (e) => {
             const selectedPaperId = Number(e.target.value);
             const selectedPaper = sortedPapers.find(p => p.id === selectedPaperId);
-            const title = `${category} (${selectedPaper.paper_year})`;
+            const title = `${category} (${paperLabel(selectedPaper)})`;
             loadTestingQuestions(selectedPaperId, title);
         });
     } else {
@@ -233,7 +239,7 @@ async function loadContent(id) {
 
     // Testing/Examination 按「具体某一年」的试卷整体查询，默认用最新年份，
     // 版本下拉框切换时（见上面 versionSelect 的 change 监听）会重新调用这个函数
-    const defaultTitle = `${category} (${defaultPaper.paper_year})`;
+    const defaultTitle = `${category} (${paperLabel(defaultPaper)})`;
     loadTestingQuestions(defaultPaper.id, defaultTitle);
 }
 

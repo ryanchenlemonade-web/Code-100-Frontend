@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin — Code 100</title>
     <link rel="stylesheet" href="../0. Shared/fontawesome/css/all.min.css">
-    <link rel="stylesheet" href="admin.css?v=20260904b">
+    <link rel="stylesheet" href="admin.css?v=20260924b">
 </head>
 <body>
 
@@ -83,6 +83,14 @@
                             <div>
                                 <label for="paper-year-input">Year</label>
                                 <input type="text" inputmode="numeric" pattern="[0-9]*" id="paper-year-input" placeholder="e.g. 2025">
+                            </div>
+                            <div>
+                                <label for="paper-semester-select">Semester</label>
+                                <select id="paper-semester-select">
+                                    <option value="">—</option>
+                                    <option value="Spring">Spring</option>
+                                    <option value="Fall">Fall</option>
+                                </select>
                             </div>
                         </div>
 
@@ -339,6 +347,6 @@
     <div id="toast-container"></div>
 
     <script src="../0. Shared/config.js"></script>
-    <script src="admin.js?v=20260904b"></script>
+    <script src="admin.js?v=20260924b"></script>
 </body>
 </html>
